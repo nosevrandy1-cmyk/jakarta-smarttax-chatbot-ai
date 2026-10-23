@@ -1184,7 +1184,7 @@ export default function TaxAssistantView() {
                 fontSize: "11px",
               }}
             >
-              DKI
+              ST
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
@@ -1194,10 +1194,10 @@ export default function TaxAssistantView() {
                   color: "#ececec",
                 }}
               >
-                Bapenda DKI Jakarta
+                Jakarta SmartTax 2026
               </div>
               <div style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
-                Layanan Data Pajak Lokal
+                Tim AI Jakarta SmartTax
               </div>
             </div>
           </div>
@@ -1252,7 +1252,7 @@ export default function TaxAssistantView() {
                 onClick={() => setModelMenuOpen((v) => !v)}
                 className={`model-selector-btn ${modelMenuOpen ? "open" : ""}`}
               >
-                <span>Pajak DKI AI</span>
+                <span>Jakarta SmartTax</span>
                 <span
                   style={{
                     color: "#8e8e8e",

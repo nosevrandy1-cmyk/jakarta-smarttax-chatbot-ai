@@ -1,138 +1,103 @@
-# Bapenda DKI Jakarta — Regional Tax AI Service
+# Jakarta SmartTax 2026 — Platform AI Pajak Daerah DKI Jakarta
 
-Layanan konsultasi dan penelusuran data Pajak Daerah Provinsi DKI Jakarta berbasis **Local Retrieval-Augmented Generation (RAG)** dan **Structured SQL Lookup**. Sistem ini dirancang untuk menjawab kueri perpajakan daerah (`PBB-P2`, `PBJT`, `BPHTB`, `Pajak Reklame`, dan `Pajak Air Tanah`) secara eksklusif dari basis data internal tanpa mengakses sumber internet eksternal.
+Repositori resmi **Tim AI Jakarta SmartTax 2026**. Proyek ini adalah platform *chat* interaktif berbasis RAG (*Retrieval-Augmented Generation*) dan pencarian SQL terstruktur untuk seluruh kategori pajak daerah **Bapenda Provinsi DKI Jakarta**:
 
----
+- **PBB-P2** (Pajak Bumi dan Bangunan Perdesaan dan Perkotaan)
+- **PBJT** (Pajak Barang dan Jasa Tertentu — Restoran, Perhotelan, Parkir, Kesenian & Hiburan)
+- **BPHTB** (Bea Perolehan Hak atas Tanah dan Bangunan)
+- **REKLAME** (Pajak Reklame — Videotron, Megatron, Billboard Kawasan Protokol & Kendali Ketat)
+- **PAT** (Pajak Air Tanah — Sumur Bor Industri & Komersial)
 
-## Arsitektur Sistem
-
-```text
-┌──────────────────────────────────────────────────────────────────────┐
-│                        Frontend (Next.js 15)                         │
-│  • App Router (React 19, TypeScript)                                 │
-│  • NDJSON Stream Consumer (/api/chat/stream)                         │
-│  • Scoped Tax Category Switcher (PBB-P2, PBJT, BPHTB, REKLAME, PAT)  │
-└──────────────────────────────────┬───────────────────────────────────┘
-                                   │ HTTP POST (NDJSON Stream)
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                        Backend API (FastAPI)                         │
-│  • Input Validation & Security Headers Middleware                    │
-│  • Cross-Category Intent Detector & Pre-Lookup Router                │
-└───────────┬──────────────────────┴───────────────────────┬───────────┘
-            │                                              │
-            ▼                                              ▼
-┌───────────────────────────┐                  ┌───────────────────────┐
-│   Relational Store        │                  │   Vector Store        │
-│   • SQLite / PostgreSQL   │                  │   • Qdrant (Local/Srv)│
-│   • Exact NOP/NPWPD/SKPD  │                  │   • 384-dim Subword & │
-│   • Arrears & Area Recap  │                  │     Token Embeddings  │
-└───────────┬───────────────┘                  └───────────┬───────────┘
-            └──────────────────────┬───────────────────────┘
-                                   │ Grounded Context Prompt
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────┐
-│                     Inference Engine (Ollama)                        │
-│  • Local Models: gemma4:e2b, qwen3:4b                                │
-│  • Cloud Models: gemma4:cloud                                        │
-│  • Deterministic Fallback Formatter (Zero-Hallucination Guarantee)   │
-└──────────────────────────────────────────────────────────────────────┘
-```
+Seluruh pemrosesan data berjalan **100% lokal (On-Premise)** tanpa mengirim data Wajib Pajak ke layanan pihak ketiga.
 
 ---
 
-## Struktur Direktori
+## Ringkasan Tech Stack (Frontend, Backend, Data & AI)
+
+Supaya tim bisa langsung paham komponen apa saja yang jalan di balik layar, berikut daftar teknologi yang kita pakai:
+
+### 1. Frontend (`frontend/`)
+- **Framework:** **Next.js 15** (*App Router*) + **React 19** + **TypeScript 5**.
+- **Styling & UI:** **Native CSS Custom Properties** (`src/app/globals.css`) tanpa ketergantungan *library* komponen berat. Mendukung tema *Light/Dark*, tabel angka *tabular-nums*, dan *off-canvas drawer* responsif untuk layar HP (*mobile*).
+- **Streaming Client:** Menggunakan **Web `ReadableStream` API + `TextDecoder`** bawaan *browser* untuk membaca aliran token **NDJSON** (*Newline-Delimited JSON*) secara *real-time* dari backend (mirip cara kerja UI ChatGPT).
+- **State & Riwayat Sesi:** Disimpan di `localStorage` *browser* (`bapenda-dki-sessions-v2`) dan otomatis dikelompokkan berdasarkan kategori pajak (`PBB-P2`, `PBJT`, `BPHTB`, `REKLAME`, `PAT`).
+
+### 2. Backend (`backend/`)
+- **Framework API:** **FastAPI** (Python 3.11+) yang dijalankan di atas server ASGI **Uvicorn**.
+- **Package & Venv Manager:** Menggunakan **`uv`** agar instalasi *dependency* dan sinkronisasi `pyproject.toml` jauh lebih cepat dibanding `pip` biasa.
+- **Validasi & Keamanan:** **Pydantic v2** untuk membatasi panjang *payload* (`message` maks 2.000 karakter, `history` maks 20 giliran) ditambah *middleware* HTTP Security Headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) dan pengaturan CORS ketat.
+- **Async HTTP Client:** **`httpx.AsyncClient`** untuk membuka koneksi *streaming* asinkron ke server LLM lokal.
+
+### 3. Database Relasional & Vector Engine (`backend/data/`)
+- **Database Transaksional:** **SQLite 3** (`backend/data/pbb_p2_lokal.db`) untuk menyimpan data objek pajak, NOP/NPWPD, rincian ketetapan pokok, denda keterlambatan, status pembayaran, dan aturan tarif tiap pajak.
+- **Vector Database (RAG):** **Qdrant** (`qdrant-client`) dalam mode penyimpanan disk lokal (`backend/data/qdrant_storage/`). Setiap dokumen diindeks dengan filter *payload* `tema_pajak` supaya pencarian satu jenis pajak tidak tercampur dengan pajak lain.
+- **Embedding Engine:** **HuggingFace `transformers` + `PyTorch`** (`sentence-transformers/all-MiniLM-L6-v2`, dimensi 384) dengan *fallback* otomatis ke *deterministic subword hashing* 384-dimensi jika server berjalan tanpa koneksi internet sama sekali (*air-gapped*).
+
+### 4. AI / LLM Runtime
+- **LLM Engine Lokal:** **Ollama** (berjalan di `http://localhost:11434`, mendukung model seperti `qwen2.5:7b-instruct` atau `llama3.1:8b`).
+- **Deterministic SQL Fallback:** Jika *service* Ollama di mesin lokal belum dinyalakan, backend **tidak akan error**—sistem otomatis menyusun jawaban dan tabel Markdown langsung dari hasil *query* SQLite & Qdrant.
+
+---
+
+## Struktur Folder Proyek
 
 ```text
 .
 ├── backend/
 │   ├── app/
-│   │   ├── config.py          # Konfigurasi environment, host Ollama, Qdrant & CORS
-│   │   ├── main.py            # Entrypoint FastAPI, middleware security, & route endpoints
-│   │   ├── tax_db.py          # Skema tabel pajak DKI, seed data, & fungsi agregasi SQL
-│   │   ├── embedder.py        # Engine ekstraksi vektor 384-dimensi (Transformers/Subword)
-│   │   ├── vector_store.py    # Integrasi Qdrant & payload filtering per kategori pajak
-│   │   └── ollama_service.py  # Orkestrasi RAG, deteksi lintas tema, & NDJSON streaming
-│   ├── pyproject.toml         # Dependensi Python (dikelola via uv / pip)
-│   └── .env.example           # Template konfigurasi environment backend
+│   │   ├── config.py           # Konfigurasi env, port, CORS, dan nama koleksi Qdrant
+│   │   ├── main.py             # Entrypoint FastAPI, endpoint REST + NDJSON streaming
+│   │   ├── ollama_service.py   # Orkestrator RAG, deteksi pindah tema, dan streaming LLM
+│   │   ├── tax_db.py           # Skema SQLite, query agregasi/tunggakan, dan seed data DKI
+│   │   ├── vector_store.py     # Wrapper Qdrant lokal & filter payload per kategori pajak
+│   │   └── embedder.py         # Pembangkit vektor 384-dimensi (Transformers / Subword)
+│   ├── data/                   # Lokasi file .db SQLite & storage Qdrant (di-ignore Git)
+│   └── pyproject.toml          # Daftar dependency Python (dikelola via uv)
 ├── frontend/
 │   ├── src/app/
-│   │   ├── layout.tsx         # Root HTML layout & konfigurasi viewport mobile
-│   │   ├── globals.css        # Design tokens, layout responsif desktop/mobile, & animasi
-│   │   └── page.tsx           # Komponen utama antarmuka chat, state sesi, & stream reader
-│   ├── next.config.mjs        # Konfigurasi Next.js & HTTP security headers
-│   ├── package.json           # Dependensi frontend
-│   └── .env.example           # Template konfigurasi environment frontend
-├── docs/
-│   └── ENGINEERING_GUIDE.md   # Dokumentasi teknis mendalam untuk tim developer & infra
-└── start.sh                   # Skrip utilitas untuk menjalankan backend & frontend lokal
+│   │   ├── layout.tsx          # Root HTML, konfigurasi font Inter, dan metadata viewport mobile
+│   │   ├── page.tsx            # Komponen utama chat, dropdown kategori pajak, & parser NDJSON
+│   │   └── globals.css         # Seluruh desain UI, variabel warna, dan media query mobile
+│   ├── next.config.mjs         # Konfigurasi Next.js & security headers
+│   └── package.json
+└── docs/
+    └── ENGINEERING_GUIDE.md    # Panduan teknis lengkap untuk Tim AI Jakarta SmartTax 2026
 ```
 
 ---
 
-## Persiapan & Menjalankan Secara Lokal
+## Cara Menjalankan di Mesin Lokal
 
-### Prasyarat
-- **Python** `>= 3.11` (disarankan menggunakan [`uv`](https://docs.astral.sh/uv/))
-- **Node.js** `>= 20.x` & `npm`
-- **Ollama** (`>= 0.6+`) berjalan pada port `11434`
+### 1. Jalankan Backend (FastAPI — Port `8000`)
 
-### 1. Menjalankan Backend (FastAPI)
+Pastikan Python 3.11+ dan [`uv`](https://docs.astral.sh/uv/) sudah terpasang:
 
 ```bash
 cd backend
 cp .env.example .env
-
-# Instalasi dependensi & jalankan server pada port 8000
+uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Verifikasi status layanan melalui endpoint health check:
-```bash
-curl http://localhost:8000/api/health
-```
+Saat pertama kali menyala, backend otomatis membuat database SQLite di `backend/data/pbb_p2_lokal.db` dan membangun indeks vektor Qdrant di `backend/data/qdrant_storage/`.
 
-### 2. Menjalankan Frontend (Next.js)
+### 2. Jalankan Frontend (Next.js — Port `3000`)
+
+Buka terminal baru:
 
 ```bash
 cd frontend
 cp .env.example .env.local
-
 npm install
 npm run dev
 ```
 
-Buka `http://localhost:3000` pada browser desktop maupun perangkat mobile.
+Buka `http://localhost:3000` di *browser*.
 
 ---
 
-## Kontrak API Utama
+## Dokumentasi Tim Engineering
 
-### `GET /api/health`
-Mengembalikan status koneksi Ollama, mode penyimpanan Qdrant, jumlah baris pajak yang terindeks, dan daftar kategori pajak aktif.
+Untuk penjelasan mendalam mengenai alur kerja sistem, arsitektur *backend/frontend*, dan panduan bagian kode mana yang harus diedit oleh tim, silakan baca:
 
-### `POST /api/chat/stream`
-Menerima payload JSON dan mengalirkan respons dalam format **NDJSON (`application/x-ndjson`)**:
-
-**Request Body:**
-```json
-{
-  "message": "Tampilkan daftar tunggakan PBB-P2 di DKI Jakarta",
-  "tema_pajak": "PBB-P2",
-  "model": "gemma4:cloud",
-  "history": []
-}
-```
-
-**Stream Events (NDJSON):**
-- `{"type": "status", "text": "..."}` — Indikator tahapan pencarian data lokal.
-- `{"type": "sources", "tema_pajak": "PBB-P2", "suggested_theme": null, "qdrant_sources": [...], "sql_tools_used": [...]}` — Metadata sumber lokal yang digunakan.
-- `{"type": "thinking", "delta": "..."}` — Token penalaran model (opsional).
-- `{"type": "token", "delta": "..."}` — Token teks jawaban utama secara *real-time*.
-- `{"type": "done", "tema_pajak": "PBB-P2", "follow_ups": [...], "model_used": "...", "duration_ms": 142}` — Penanda akhir stream beserta saran pertanyaan lanjutan.
-
----
-
-## Panduan Pengembangan Tim
-
-Untuk panduan lengkap mengenai cara memodifikasi kategori pajak, mengubah skema database, menyesuaikan prompt RAG, maupun konfigurasi server, silakan baca **[docs/ENGINEERING_GUIDE.md](docs/ENGINEERING_GUIDE.md)**.
+👉 **[Panduan Engineering Tim AI Jakarta SmartTax 2026 (`docs/ENGINEERING_GUIDE.md`)](docs/ENGINEERING_GUIDE.md)**

@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Bapenda DKI Jakarta — Asisten Pajak Daerah",
+  title: "Jakarta SmartTax 2026 — Sistem Informasi Pajak Daerah DKI",
   description:
-    "Layanan Informasi & Penelusuran Data Pajak Daerah Provinsi DKI Jakarta",
+    "Platform Penelusuran Data Pajak Daerah Provinsi DKI Jakarta oleh Tim AI Jakarta SmartTax 2026",
 };
 
 export const viewport: Viewport = {
