@@ -11,14 +11,16 @@ from qdrant_client.models import (
 
 from .config import QDRANT_COLLECTION, QDRANT_STORAGE_DIR, QDRANT_URL, VECTOR_DIM
 from .embedder import embedder
-from .tax_db import TAX_THEMES, get_all_sppt_records, get_regulasi_chunks
+from .tax_db import (
+    TAX_THEMES,
+    get_all_legal_corpus,
+    get_all_sppt_records,
+    get_regulasi_chunks,
+)
 
 
-class LocalPBBVectorStore:
-    """
-    Qdrant Vector Database for strictly local Bapenda DKI Jakarta thematic tax records and regulations.
-    Supports filtering by `tema_pajak` (PBB-P2, PBJT, BPHTB, REKLAME, PAT).
-    """
+class SmartTaxVectorStore:
+    """Qdrant vector store for Jakarta SmartTax Chatbot AI."""
 
     def __init__(self) -> None:
         if QDRANT_URL:
@@ -33,6 +35,7 @@ class LocalPBBVectorStore:
     def reindex_all(self) -> Dict[str, int]:
         tax_records = get_all_sppt_records()
         regulasi_chunks = get_regulasi_chunks()
+        legal_corpus = get_all_legal_corpus()
 
         if self.client.collection_exists(self.collection_name):
             self.client.delete_collection(self.collection_name)
@@ -68,7 +71,7 @@ class LocalPBBVectorStore:
             )
 
         for chunk in regulasi_chunks:
-            text_repr = f"Regulasi Lokal {chunk['tema_pajak']} DKI Jakarta - {chunk['title']}:\n{chunk['content']}"
+            text_repr = f"Ketentuan Tarif & Rumus {chunk['tema_pajak']} DKI Jakarta - {chunk['title']}:\n{chunk['content']}"
             texts.append(text_repr)
             payloads.append(
                 {
@@ -77,6 +80,24 @@ class LocalPBBVectorStore:
                     "title": chunk["title"],
                     "text": chunk["content"],
                     "metadata": chunk,
+                }
+            )
+
+        for leg in legal_corpus:
+            text_repr = (
+                f"Korpus Pasal & Dasar Hukum {leg['tema_pajak']} DKI Jakarta | "
+                f"{leg['jenis_instrumen']} | {leg['bab_bagian']} | {leg['pasal_ayat']} tentang {leg['tentang']}:\n"
+                f"Bunyi Norma: {leg['bunyi_norma']}\n"
+                f"Kaidah Perumusan / Legal Drafting: {leg['kaidah_perumusan']}"
+            )
+            texts.append(text_repr)
+            payloads.append(
+                {
+                    "doc_type": "pasal_hukum",
+                    "tema_pajak": leg["tema_pajak"],
+                    "title": f"[{leg['kode_pasal']}] {leg['pasal_ayat']} — {leg['tentang']}",
+                    "text": text_repr,
+                    "metadata": leg,
                 }
             )
 
@@ -91,6 +112,7 @@ class LocalPBBVectorStore:
         return {
             "sppt_indexed": len(tax_records),
             "regulasi_indexed": len(regulasi_chunks),
+            "pasal_hukum_indexed": len(legal_corpus),
             "total_points": len(texts),
         }
 
@@ -99,6 +121,7 @@ class LocalPBBVectorStore:
         query: str,
         limit: int = 6,
         tema_pajak: Optional[str] = None,
+        doc_type: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         if not self.client.collection_exists(self.collection_name):
             self.reindex_all()
@@ -108,6 +131,10 @@ class LocalPBBVectorStore:
         if tema_pajak and tema_pajak.upper() in TAX_THEMES:
             must_conditions.append(
                 FieldCondition(key="tema_pajak", match=MatchValue(value=tema_pajak.upper()))
+            )
+        if doc_type:
+            must_conditions.append(
+                FieldCondition(key="doc_type", match=MatchValue(value=doc_type))
             )
 
         q_filter = Filter(must=must_conditions) if must_conditions else None
@@ -137,4 +164,4 @@ class LocalPBBVectorStore:
         return hits
 
 
-vector_store = LocalPBBVectorStore()
+vector_store = SmartTaxVectorStore()

@@ -1,11 +1,16 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import {
+  CAPABILITY_MODES,
+  CapabilityModeCode,
+  TAX_THEMES as SCALABLE_TAX_THEMES,
+  TaxThemeCode,
+  getStartersForThemeAndMode,
+} from "@/config/smarttaxConfig";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const STORAGE_KEY = "bapenda_dki_chat_sessions_v2";
-
-export type TaxThemeCode = "PBB-P2" | "PBJT" | "BPHTB" | "REKLAME" | "PAT";
+const STORAGE_KEY = "jakarta_smarttax_sessions_v2";
 
 interface TaxThemeConfig {
   code: TaxThemeCode;
@@ -486,7 +491,9 @@ function FormattedMarkdown({
 
 export default function TaxAssistantView() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
-  const [selectedModel, setSelectedModel] = useState<string>("gemma4:cloud");
+  const [selectedModel, setSelectedModel] = useState<string>("gemma2:9b");
+  const [capabilityMode, setCapabilityMode] =
+    useState<CapabilityModeCode>("konsultasi");
   const [modelMenuOpen, setModelMenuOpen] = useState<boolean>(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState<boolean>(false);
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
@@ -532,6 +539,16 @@ export default function TaxAssistantView() {
     sessions.find((s) => s.id === activeSessionId) || sessions[0];
   const currentTheme: TaxThemeCode = activeSession.theme || "PBB-P2";
   const themeConfig = DKI_TAX_THEMES[currentTheme];
+  const scalableTheme =
+    SCALABLE_TAX_THEMES.find((t) => t.code === currentTheme) ||
+    SCALABLE_TAX_THEMES[0];
+  const activeStarters = getStartersForThemeAndMode(
+    scalableTheme,
+    capabilityMode
+  );
+  const activeModeInfo =
+    CAPABILITY_MODES.find((m) => m.code === capabilityMode) ||
+    CAPABILITY_MODES[0];
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
@@ -790,6 +807,7 @@ export default function TaxAssistantView() {
           message: query,
           model: selectedModel,
           tema_pajak: effectiveTheme,
+          mode_kapabilitas: capabilityMode,
           history: historyForApi,
         }),
         signal: controller.signal,
@@ -1260,9 +1278,9 @@ export default function TaxAssistantView() {
                     fontSize: "13.5px",
                   }}
                 >
-                  {selectedModel === "gemma4:cloud"
-                    ? "Gemma 4"
-                    : selectedModel}
+                  {selectedModel.startsWith("deepseek")
+                    ? "DeepSeek"
+                    : "Gemma"}
                 </span>
                 <svg
                   width="14"
@@ -1284,19 +1302,14 @@ export default function TaxAssistantView() {
                 <div className="model-dropdown">
                   {[
                     {
-                      id: "gemma4:cloud",
-                      name: "Gemma 4 Cloud",
-                      desc: "Respons cepat untuk konsultasi pajak DKI",
+                      id: "gemma2:9b",
+                      name: "Gemma (Ollama Lokal)",
+                      desc: "RAG cepat & presisi untuk tarif, rumus, dan data pajak DKI",
                     },
                     {
-                      id: "gemma4:e2b",
-                      name: "Gemma 4 E2B (Lokal)",
-                      desc: "Berjalan 100% offline di perangkat ini",
-                    },
-                    {
-                      id: "qwen3:4b",
-                      name: "Qwen 3 4B (Lokal)",
-                      desc: "Model penalaran lokal offline",
+                      id: "deepseek-r1:8b",
+                      name: "DeepSeek (Ollama Lokal)",
+                      desc: "Penalaran mendalam untuk pasal, dasar hukum, & perumusan",
                     },
                   ].map((m) => {
                     const isSelected = selectedModel === m.id;
@@ -1375,7 +1388,7 @@ export default function TaxAssistantView() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScrollArea}
-          key={`${activeSessionId}-${currentTheme}`}
+          key={`${activeSessionId}-${currentTheme}-${capabilityMode}`}
           style={{
             flex: 1,
             overflowY: "auto",
@@ -1386,7 +1399,7 @@ export default function TaxAssistantView() {
           {isChatEmpty ? (
             <div className="empty-hero">
               <h2 className="hero-title">{themeConfig.greeting}</h2>
-              <p className="hero-subtitle">{themeConfig.subtitle}</p>
+              <p className="hero-subtitle">{activeModeInfo.description}</p>
 
               <div className="chip-row">
                 {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[]).map((code) => {
@@ -1406,10 +1419,55 @@ export default function TaxAssistantView() {
                 })}
               </div>
 
+              <div
+                style={{
+                  display: "inline-flex",
+                  flexWrap: "wrap",
+                  justifyContent: "center",
+                  gap: "6px",
+                  padding: "4px",
+                  borderRadius: "999px",
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  marginBottom: "18px",
+                }}
+              >
+                {CAPABILITY_MODES.map((mode) => {
+                  const isActive = capabilityMode === mode.code;
+                  return (
+                    <button
+                      key={mode.code}
+                      type="button"
+                      onClick={() => {
+                        setCapabilityMode(mode.code);
+                        if (mode.code === "perumusan_hukum") {
+                          setSelectedModel("deepseek-r1:8b");
+                        }
+                      }}
+                      style={{
+                        border: "none",
+                        borderRadius: "999px",
+                        padding: "6px 13px",
+                        fontSize: "12.5px",
+                        fontWeight: isActive ? 600 : 400,
+                        background: isActive
+                          ? "rgba(255,255,255,0.13)"
+                          : "transparent",
+                        color: isActive ? "#ffffff" : "#9ca3af",
+                        cursor: "pointer",
+                        transition: "all 0.16s ease",
+                      }}
+                    >
+                      {mode.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="suggestion-grid">
-                {themeConfig.suggestions.map((card, i) => (
+                {activeStarters.map((card, i) => (
                   <button
-                    key={`${currentTheme}-${i}`}
+                    key={`${currentTheme}-${capabilityMode}-${i}`}
                     onClick={() => sendPrompt(card.prompt)}
                     className="suggestion-card"
                     style={{ animationDelay: `${i * 45}ms` }}
@@ -1430,7 +1488,7 @@ export default function TaxAssistantView() {
                         marginTop: "2px",
                       }}
                     >
-                      {card.subtitle}
+                      {card.desc}
                     </div>
                   </button>
                 ))}
@@ -1865,125 +1923,165 @@ export default function TaxAssistantView() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: "10px",
+                gap: "8px",
+                flexWrap: "wrap",
               }}
             >
-              <div ref={themeDropdownRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setThemeMenuOpen((v) => !v)}
-                  className={`composer-pill-btn ${themeMenuOpen ? "open" : ""}`}
-                  title="Ganti Jenis Pajak DKI Jakarta"
-                >
-                  <ThemeIcon
-                    code={currentTheme}
-                    color={themeConfig.iconColor}
-                  />
-                  <span>{themeConfig.shortLabel}</span>
-                  <span
-                    className="composer-pill-scope"
-                    style={{ color: "rgba(255,255,255,0.2)" }}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div ref={themeDropdownRef} style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setThemeMenuOpen((v) => !v)}
+                    className={`composer-pill-btn ${themeMenuOpen ? "open" : ""}`}
+                    title="Ganti Jenis Pajak DKI Jakarta"
                   >
-                    |
-                  </span>
-                  <span
-                    className="composer-pill-scope"
-                    style={{ color: "#8e8e8e", fontWeight: 400 }}
-                  >
-                    DKI Jakarta
-                  </span>
-                  <svg
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#8e8e8e"
-                    strokeWidth="2"
-                    style={{
-                      transform: themeMenuOpen
-                        ? "rotate(180deg)"
-                        : "rotate(0deg)",
-                      transition: "transform 0.2s ease",
-                    }}
-                  >
-                    <path d="M18 15l-6-6-6 6" />
-                  </svg>
-                </button>
-
-                {themeMenuOpen && (
-                  <div className="theme-up-dropdown">
-                    <div
+                    <ThemeIcon
+                      code={currentTheme}
+                      color={themeConfig.iconColor}
+                    />
+                    <span>{themeConfig.shortLabel}</span>
+                    <span
+                      className="composer-pill-scope"
+                      style={{ color: "rgba(255,255,255,0.2)" }}
+                    >
+                      |
+                    </span>
+                    <span
+                      className="composer-pill-scope"
+                      style={{ color: "#8e8e8e", fontWeight: 400 }}
+                    >
+                      DKI Jakarta
+                    </span>
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#8e8e8e"
+                      strokeWidth="2"
                       style={{
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: "#7a7a7a",
-                        padding: "6px 11px 4px",
+                        transform: themeMenuOpen
+                          ? "rotate(180deg)"
+                          : "rotate(0deg)",
+                        transition: "transform 0.2s ease",
                       }}
                     >
-                      Jenis Pajak Daerah • DKI Jakarta
-                    </div>
-                    {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[]).map(
-                      (code) => {
-                        const item = DKI_TAX_THEMES[code];
-                        const isSelected = currentTheme === code;
-                        return (
-                          <button
-                            key={code}
-                            type="button"
-                            onClick={() => switchTheme(code)}
-                            className={`model-option ${
-                              isSelected ? "selected" : ""
-                            }`}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: "10px",
-                              }}
+                      <path d="M18 15l-6-6-6 6" />
+                    </svg>
+                  </button>
+
+                  {themeMenuOpen && (
+                    <div className="theme-up-dropdown">
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "#7a7a7a",
+                          padding: "6px 11px 4px",
+                        }}
+                      >
+                        Jenis Pajak Daerah • DKI Jakarta
+                      </div>
+                      {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[]).map(
+                        (code) => {
+                          const item = DKI_TAX_THEMES[code];
+                          const isSelected = currentTheme === code;
+                          return (
+                            <button
+                              key={code}
+                              type="button"
+                              onClick={() => switchTheme(code)}
+                              className={`model-option ${
+                                isSelected ? "selected" : ""
+                              }`}
                             >
-                              <div style={{ marginTop: "3px" }}>
-                                <ThemeIcon
-                                  code={code}
-                                  color={item.iconColor}
-                                />
-                              </div>
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: "13px",
-                                    fontWeight: 500,
-                                    color: "#ececec",
-                                  }}
-                                >
-                                  {item.label}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: "11.5px",
-                                    color: "#8e8e8e",
-                                  }}
-                                >
-                                  {item.desc}
-                                </div>
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <span
+                              <div
                                 style={{
-                                  color: "#ececec",
-                                  fontSize: "13px",
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  gap: "10px",
                                 }}
                               >
-                                ✓
-                              </span>
-                            )}
-                          </button>
-                        );
-                      }
-                    )}
-                  </div>
-                )}
+                                <div style={{ marginTop: "3px" }}>
+                                  <ThemeIcon
+                                    code={code}
+                                    color={item.iconColor}
+                                  />
+                                </div>
+                                <div>
+                                  <div
+                                    style={{
+                                      fontSize: "13px",
+                                      fontWeight: 500,
+                                      color: "#ececec",
+                                    }}
+                                  >
+                                    {item.label}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "11.5px",
+                                      color: "#8e8e8e",
+                                    }}
+                                  >
+                                    {item.desc}
+                                  </div>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <span
+                                  style={{
+                                    color: "#ececec",
+                                    fontSize: "13px",
+                                  }}
+                                >
+                                  ✓
+                                </span>
+                              )}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {CAPABILITY_MODES.map((mode) => {
+                  const active = capabilityMode === mode.code;
+                  return (
+                    <button
+                      key={mode.code}
+                      type="button"
+                      onClick={() => {
+                        setCapabilityMode(mode.code);
+                        if (mode.code === "perumusan_hukum") {
+                          setSelectedModel("deepseek-r1:8b");
+                        }
+                      }}
+                      className="composer-pill-btn"
+                      style={{
+                        background: active
+                          ? "rgba(255,255,255,0.12)"
+                          : "transparent",
+                        borderColor: active
+                          ? "rgba(255,255,255,0.22)"
+                          : "rgba(255,255,255,0.08)",
+                        color: active ? "#ffffff" : "#9ca3af",
+                        fontWeight: active ? 600 : 400,
+                      }}
+                      title={mode.description}
+                    >
+                      <span>{mode.shortLabel}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               {isGenerating ? (

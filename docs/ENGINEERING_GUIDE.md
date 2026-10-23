@@ -1,174 +1,131 @@
 # Engineering Guide — Tim AI Jakarta SmartTax 2026
 
-Halo rekan-rekan **Tim AI Jakarta SmartTax 2026**. Dokumen ini ditulis sebagai pegangan teknis (*handbook*) untuk seluruh anggota tim—baik yang megang **Frontend**, **Backend**, **Data/Database**, maupun **Server/Infra**—supaya kita punya pemahaman yang sama tentang cara kerja kode ini dan tahu persis file mana yang harus disentuh saat ada perubahan.
+Halo rekan-rekan **Tim AI Jakarta SmartTax 2026**. Dokumen ini disusun sebagai pegangan teknis bersama untuk tim **Frontend**, **Backend**, **Data/Regulasi**, dan **AI/Server** agar pengembangan **Jakarta SmartTax Chatbot AI** tetap rapi, konsisten, dan mudah di-*scale up*.
 
 ---
 
-## 1. Gambaran Besar Sistem (Bagaimana Semuanya Terhubung)
+## 1. Arsitektur & 3 Kapabilitas Utama Sistem
 
-Secara sederhana, **Jakarta SmartTax 2026** adalah sistem tanya-jawab pajak daerah DKI Jakarta (`PBB-P2`, `PBJT`, `BPHTB`, `REKLAME`, `PAT`) yang menggabungkan **pencarian tabel SQL pasti** (untuk angka tagihan, NOP/NPWPD, denda, dan rekap wilayah) dengan **pencarian vektor semantik / RAG** (untuk tarif, rumus perhitungan, dan ketentuan pajak).
+**Jakarta SmartTax Chatbot AI** dirancang bukan sekadar untuk tanya-jawab tarif pajak biasa, melainkan memiliki **3 mode kapabilitas terpadu** yang berjalan di atas data lokal Bapenda DKI Jakarta (`PBB-P2`, `PBJT`, `BPHTB`, `REKLAME`, `PAT`):
 
-Kenapa kita gabungkan SQL + Vector Search?
-Karena kalau mengandalkan LLM atau Vector Search saja untuk urusan angka rupiah pajak, rawan terjadi *halusinasi* saat menjumlahkan piutang atau denda. Dengan arsitektur kita sekarang:
-1. Angka rupiah, denda, dan status lunas dihitung pasti oleh **SQLite**.
-2. Konteks aturan dan pencarian teks bebas dicari oleh **Qdrant Vector Database**.
-3. **Ollama (LLM Lokal)** bertugas merangkai hasil keduanya menjadi jawaban bahasa Indonesia yang enak dibaca dan rapi dalam bentuk tabel Markdown.
+1. **Mode Konsultasi Tarif, Rumus & Data Pajak (`konsultasi`)**
+   Menangani pengecekan objek pajak (NOP/NPWPD/SSPD/SKPD), simulasi rumus perhitungan, daftar tunggakan + denda, serta rekapitulasi realisasi per Kota Administrasi DKI Jakarta.
+2. **Mode Telusur Pasal & Dasar Hukum (`pasal_hukum`)**
+   Menangani pencarian bunyi pasal dan ayat secara presisi dari tabel `korpus_hukum_dki`, lengkap dengan hierarki instrumen hukum (Perda, Pergub, Kepgub) dan implikasi penerapannya.
+3. **Mode Perumusan Dasar Hukum Baru / Legal Drafting (`perumusan_hukum`)**
+   Membantu tim hukum dan analis kebijakan menyusun draf regulasi baru (Rancangan Pergub / Kepgub / SK Kepala Bapenda) yang mencakup **Konsiderans Menimbang**, **Dasar Hukum Mengingat**, **Rancangan Batang Tubuh (Pasal & Ayat)**, serta **Matriks Harmonisasi Pasal Induk**.
 
 ```text
-[Browser Desktop / Mobile]
-   │  Next.js 15 + React 19 (Port 3000)
-   │  Kirim POST /api/chat/stream (Payload: message, tema_pajak, history)
+[Browser Desktop / Mobile — Next.js 15 + React 19 (Port 3000)]
+   │  Pilih Pajak (PBB-P2 / PBJT / BPHTB / REKLAME / PAT)
+   │  Pilih Mode (Tarif & Data | Pasal & Dasar Hukum | Perumusan Hukum)
+   │  POST /api/chat/stream
    ▼
 [Backend FastAPI + Uvicorn (Port 8000)]
-   ├─► 1. Cek apakah pertanyaan nyasar ke tema pajak lain (_detect_cross_theme)
-   ├─► 2. Cari kecocokan semantik di Qdrant (difilter khusus tema_pajak aktif)
-   ├─► 3. Jalankan query SQLite (cari objek/NOP, daftar tunggakan, rekap wilayah)
-   └─► 4. Rangkai prompt + konteks data lokal ──► Kirim ke Ollama (Port 11434)
-          *(Jika Ollama mati/belum terpasang, otomatis pakai Deterministic SQL Formatter)*
+   ├─► 1. Deteksi mode kapabilitas (_resolve_capability_mode) & cek lintas-pajak (_detect_cross_theme)
+   ├─► 2. Query Qdrant Vector DB (filter tema_pajak + doc_type: objek_pajak / regulasi / pasal_hukum)
+   ├─► 3. Query SQLite (pajak_dki_jakarta + korpus_hukum_dki + susun_rancangan_hukum_dki)
+   └─► 4. Kirim konteks RAG terstruktur (temperature=0.0, top_p=0.1) ke Ollama:
+          • Gemma (gemma2:9b di OLLAMA_HOST) ──► untuk RAG cepat Tarif & Data
+          • DeepSeek (deepseek-r1:8b di OLLAMA_SECONDARY_HOST) ──► untuk Analisis Pasal & Legal Drafting
    │
-   ▼  Alirkan balik per baris via protokol NDJSON (status -> sources -> token -> done)
-[Browser merender huruf demi huruf + Tabel Markdown + Tombol Follow-up]
+   ▼  Alirkan balik via NDJSON (status -> sources -> thinking -> token -> done)
+[Browser merender tahapan proses, penalaran, tabel Markdown, & chip tindak lanjut]
 ```
 
 ---
 
-## 2. Bedah Tech Stack: Kita Pakai Apa Saja?
+## 2. Penjelasan Tech Stack (Frontend, Backend, Database & AI)
 
-### A. Frontend (`frontend/`) — Pakai Apa & Kenapa?
+### A. Frontend (`frontend/`)
 - **Next.js 15 (App Router) + React 19 + TypeScript 5**
-  Kita pakai Next.js 15 dengan *App Router* (`frontend/src/app/`). Seluruh interaksi *chat* berjalan di sisi klien (*Client Component* pada `src/app/page.tsx`) supaya transisi antar-sesi, pergantian *dropdown* pajak, dan efek *streaming* teks terasa instan tanpa *reload* halaman.
+  Komponen utama berada di `src/app/page.tsx`, sedangkan seluruh konfigurasi tema pajak, mode kapabilitas, dan daftar *starter prompts* dipisahkan secara modular di `src/config/smarttaxConfig.ts`.
 - **Native CSS Custom Properties (`src/app/globals.css`)**
-  Kita sengaja tidak menumpuk *library* UI pihak ketiga yang bikin *bundle* bengkak. Seluruh warna tema (*Light Mode* & *Dark Mode*), ukuran *bubble* percakapan, *badge* indikator pajak, hingga *off-canvas sidebar drawer* untuk tampilan HP diatur lewat CSS Variables di `globals.css`.
-- **NDJSON Stream Reader (`ReadableStream` + `TextDecoder`)**
-  Di `page.tsx`, fungsi `sendQuestion()` tidak menunggu jawaban selesai sekaligus, melainkan membuka aliran `response.body.getReader()`. Begitu backend mengirim potongan baris JSON (`status`, `token`, `done`), layar pengguna langsung memperbarui tahapan *loading* dan mengetik jawaban secara *real-time*.
-- **Penyimpanan Sesi Lokal (`localStorage`)**
-  Riwayat obrolan disimpan di *browser* dengan kunci `bapenda-dki-sessions-v2`. Setiap sesi menyimpan properti `taxTheme` masing-masing, jadi obrolan PBB-P2 tidak akan bercampur dengan obrolan PBJT Restoran.
+  Mengatur seluruh tata letak *sidebar*, *drawer* layar HP (`@media (max-width: 767px)`), animasi *shimmer loading*, dan tabel Markdown tanpa membebani ukuran *bundle* dengan *library* CSS eksternal yang berat.
+- **NDJSON Stream Consumer**
+  Membaca aliran respon baris demi baris dari backend menggunakan `ReadableStream` dan `TextDecoder`. Mendukung tampilan lipat (*collapsible*) untuk blok penalaran (`thinking`) saat menggunakan model **DeepSeek**.
 
-### B. Backend (`backend/`) — Pakai Apa & Kenapa?
-- **Python 3.11+ & FastAPI (`app/main.py`)**
-  Kita pakai FastAPI karena dukungannya terhadap *asynchronous generator* (`StreamingResponse`) sangat matang dan ringan. Server dijalankan menggunakan **Uvicorn ASGI**.
-- **Manajemen Paket dengan `uv` (`pyproject.toml`)**
-  Tim tidak perlu lagi pusing dengan `virtualenv` manual atau `pip install` yang lambat. Cukup jalankan `uv sync`, semua *dependency* terkunci rapi sesuai `uv.lock`.
-- **Validasi Input & Keamanan (`Pydantic v2` + Middleware)**
-  Di `app/main.py`, semua *request* yang masuk ke `/api/chat` dan `/api/chat/stream` divalidasi oleh `ChatRequestInput`:
-  - Panjang pesan dibatasi maksimal `2.000` karakter.
-  - Riwayat percakapan dibatasi maksimal `20` item terakhir.
-  - Dilengkapi *Security Headers Middleware* (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`) dan pembatasan domain `CORS_ORIGINS`.
-- **Async HTTP Client (`httpx`)**
-  Untuk menembak endpoint `/api/chat` milik Ollama secara *streaming* tanpa memblokir *event loop* utama FastAPI.
+### B. Backend (`backend/`)
+- **Python 3.11+, FastAPI & Uvicorn (`app/main.py`)**
+  Menyediakan endpoint *streaming* asinkron (`POST /api/chat/stream`), pengecekan kesehatan sistem (`GET /api/health`), inspeksi pasal (`GET /api/korpus-hukum`), dan *re-indexing* vektor (`POST /api/reindex`).
+- **Manajemen Dependency dengan `uv` (`pyproject.toml`)**
+  Nama paket dikunci sebagai `jakarta-smarttax-chatbot-ai-backend`. Cukup jalankan `uv sync` untuk menyamakan *environment* di semua mesin tim.
+- **Keamanan & Validasi (`Pydantic v2`)**
+  Membatasi ukuran pesan maksimal `2.000` karakter, riwayat percakapan maksimal `20` pesan, mengatur header keamanan HTTP, dan membatasi domain asal lewat `CORS_ORIGINS`.
 
-### C. Database & Vector Engine (`backend/app/tax_db.py` & `vector_store.py`)
-- **SQLite 3 (`backend/data/pbb_p2_lokal.db`)**
-  Berisi 2 tabel utama dengan mode `WAL` (*Write-Ahead Logging*) agar aman diakses bersamaan:
-  1. `pajak_dki_records`: Menyimpan data ketetapan pajak untuk ke-5 tema (`PBB-P2`, `PBJT`, `BPHTB`, `REKLAME`, `PAT`), mulai dari `nomor_identitas` (NOP / NPWPD / Nomor SSPD / SKPD), `nama_wp`, `nama_objek`, wilayah administrasi DKI Jakarta, nilai `dpp_atau_njop_rp`, `pokok_pajak_rp`, `denda_rp`, hingga `status_bayar`.
-  2. `regulasi_dki_chunks`: Menyimpan ringkasan aturan tarif, rumus perhitungan, dan ketentuan khusus per jenis pajak.
-- **Qdrant Vector Database (`backend/data/qdrant_storage/`)**
-  Kita menggunakan `QdrantClient(path=...)` yang menyimpan indeks vektor langsung di folder lokal (atau bisa diarahkan ke Qdrant Server via `QDRANT_URL`). Setiap dokumen yang dimasukkan ke koleksi `bapenda_dki_pajak_v2` memiliki metadata `tema_pajak`. Saat pengguna memilih tema `PBJT`, Qdrant memasang `FieldCondition(key="tema_pajak", match=MatchValue(value="PBJT"))` sehingga hasil pencarian dijamin 100% relevan dengan tema aktif.
-- **Local Embedding (`backend/app/embedder.py`)**
-  Menghasilkan vektor berdimensi `384` menggunakan model `sentence-transformers/all-MiniLM-L6-v2` via `transformers` & `torch`. Kalau server produksi kita nanti diisolasi dari internet dan belum sempat mengunduh *cache* HuggingFace, `embedder.py` punya *fallback* otomatis ke algoritma *subword hashing* 384-dimensi yang tetap jalan secara lokal.
+### C. Database SQLite & Vector Engine Qdrant (`backend/app/tax_db.py` & `vector_store.py`)
+- **SQLite 3 (`backend/data/pajak_dki.sqlite`)**
+  Memiliki dua tabel utama yang otomatis dibuat saat startup (`init_tax_db()`):
+  1. `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai dasar pengenaan, pokok pajak, denda, dan status lunas.
+  2. `korpus_hukum_dki`: Menyimpan struktur pasal & dasar hukum (`kode_pasal`, `tema_pajak`, `jenis_instrumen`, `hierarki_level`, `bab_bagian`, `pasal_ayat`, `tentang`, `bunyi_norma`, `kaidah_perumusan`, `kata_kunci`).
+- **Qdrant Vector Store (`backend/qdrant_storage/`)**
+  Mengindeks seluruh baris dari `pajak_dki_jakarta`, `DKI_REGULASI_CHUNKS`, dan `korpus_hukum_dki` ke dalam koleksi `jakarta_smarttax_kb`. Saat pengguna berada di mode **Pasal & Dasar Hukum** atau **Perumusan Hukum**, Qdrant otomatis memprioritaskan dokumen berjenis `doc_type="pasal_hukum"`.
 
-### D. AI / LLM Runtime (`backend/app/ollama_service.py`)
-- **Ollama Lokal (`http://localhost:11434`)**
-  Secara *default* diarahkan ke model `qwen2.5:7b-instruct` (bisa diganti lewat file `.env`). Kita men-set `temperature: 0.0` supaya model patuh 100% pada angka di konteks lokal dan tidak mengarang angka pajak.
-- **Deterministic SQL Fallback (`_build_local_deterministic_answer`)**
-  Ini fitur penyelamat kita: kalau *service* Ollama di server sedang *down*, *restart*, atau di laptop anggota tim belum ter-install Ollama, sistem otomatis menyusun tabel Markdown dari hasil query SQLite dan mengalirkannya ke frontend dengan kecepatan ketik natural.
+### D. Dual-Model Ollama Runtime: Gemma & DeepSeek (`backend/app/ollama_service.py`)
+- **Prinsip Anti-Halusinasi (*Zero-Hallucination Grounding*):**
+  Backend mengunci parameter inferensi Ollama pada `temperature: 0.0` dan `top_p: 0.1`, serta menyuntikkan hasil query SQLite + Qdrant langsung ke dalam *prompt*. Model dilarang mengarang angka atau nomor pasal di luar konteks lokal.
+- **Pembagian Peran Model (1 PC maupun 2 PC LAN):**
+  - `OLLAMA_MODEL=gemma2:9b` di `OLLAMA_HOST` (PC Server 1): Merespons cepat pertanyaan tarif, rumus, dan data ketetapan pajak.
+  - `OLLAMA_DRAFTING_MODEL=deepseek-r1:8b` di `OLLAMA_SECONDARY_HOST` (PC Server 2 atau PC yang sama): Menangani analisis pasal dan perumusan draf hukum baru. Blok `<think>...</think>` dari DeepSeek otomatis dipisahkan oleh backend menjadi event `{"type": "thinking"}` sehingga hasil akhir di layar tetap bersih.
 
 ---
 
-## 3. Protokol Streaming Backend ke Frontend (NDJSON)
+## 3. Panduan Scaling Up untuk Tim (File Mana yang Harus Diedit?)
 
-Endpoint `POST /api/chat/stream` mengirimkan respon dengan tipe `application/x-ndjson`. Setiap baris adalah objek JSON mandiri:
+Kode ini sudah dirancang modular agar setiap anggota tim bisa menambah fitur, pasal, atau tampilan baru tanpa saling menimpa pekerjaan:
 
-1. **Tahap Proses (`type: "status"`)** — Ditampilkan sebagai indikator langkah kerja di UI:
-   ```json
-   {"type": "status", "text": "Menelusuri arsip PBB-P2 Bapenda DKI Jakarta..."}
-   ```
-2. **Metadata Sumber & Deteksi Lintas-Pajak (`type: "sources"`)**:
-   ```json
+### A. Menambah Pasal & Dasar Hukum Baru (Tim Data / Regulasi & Backend)
+1. Buka `backend/app/tax_db.py` dan cari list `DKI_LEGAL_CORPUS`.
+2. Tambahkan dictionary pasal baru dengan struktur berikut:
+   ```python
    {
-     "type": "sources",
-     "tema_pajak": "PBB-P2",
-     "suggested_theme": "PBJT",
-     "qdrant_sources": [...],
-     "sql_tools_used": ["daftar_tunggakan_pajak_dki"]
+       "kode_pasal": "PASAL-PBB-04",
+       "tema_pajak": "PBB-P2",
+       "jenis_instrumen": "Peraturan Gubernur DKI Jakarta",
+       "hierarki_level": 2,
+       "bab_bagian": "Bab Tata Cara Pengurangan PBB-P2",
+       "pasal_ayat": "Pasal 12 ayat (1) dan ayat (2)",
+       "tentang": "Kriteria Pengurangan PBB-P2 bagi Veteran dan Pensiunan",
+       "bunyi_norma": "(1) Pengurangan PBB-P2 dapat diberikan...",
+       "kaidah_perumusan": "Digunakan sebagai acuan saat menyusun...",
+       "kata_kunci": "pengurangan pbb veteran pensiunan",
    }
    ```
-   *Catatan:* Jika `suggested_theme` tidak `null` (misalnya user sedang di tab `PBB-P2` tapi bertanya soal *Pajak Restoran*), frontend otomatis memunculkan kartu tombol **"Pindah ke PBJT"**.
-3. **Aliran Teks Jawaban (`type: "token"`)**:
-   ```json
-   {"type": "token", "delta": "Berikut rincian "}
+3. Jalankan perintah berikut agar SQLite dan Qdrant langsung mengindeks pasal baru tersebut:
+   ```bash
+   curl -X POST http://localhost:8000/api/reindex
    ```
-4. **Selesai (`type: "done"`)** — Mengirimkan rekomendasi pertanyaan lanjutan (*follow-up chips*):
-   ```json
-   {
-     "type": "done",
-     "tema_pajak": "PBB-P2",
-     "suggested_theme": null,
-     "follow_ups": ["Tampilkan objek PBB-P2 DKI yang masih menunggak beserta dendanya", "..."],
-     "model_used": "qwen2.5:7b-instruct",
-     "duration_ms": 410
-   }
-   ```
+
+### B. Mengembangkan Template Perumusan Dasar Hukum / Legal Drafting (Tim Backend & AI)
+- Buka `backend/app/tax_db.py` -> fungsi `susun_rancangan_hukum_dki(topik_perumusan, tema_pajak)` untuk menambah struktur konsiderans atau klausul baku.
+- Buka `backend/app/ollama_service.py` -> fungsi `build_thematic_system_prompt()` dan `_build_local_deterministic_answer()` untuk mengatur format luaran draf regulasi (misalnya menambah bagian *Penjelasan Pasal Demi Pasal* atau *Naskah Akademik*).
+
+### C. Mengubah Tampilan UI, Kartu Prompt Awal, atau Menambah Mode Baru (Tim Frontend)
+1. **Mengubah Kartu Pertanyaan Awal (*Starter Cards*) atau Label Mode:**
+   - Langsung edit `frontend/src/config/smarttaxConfig.ts`. Di file ini sudah dipisahkan `starters` (mode konsultasi), `legalStarters` (mode pasal & dasar hukum), dan `draftingStarters` (mode perumusan hukum) untuk masing-masing pajak.
+2. **Mengubah Komponen Chat, Dropdown, atau Header:**
+   - Edit `frontend/src/app/page.tsx`.
+3. **Mengubah Warna, Font, atau Layout Responsif Mobile:**
+   - Edit `frontend/src/app/globals.css`.
+
+### D. Menghubungkan 2 PC Server di Jaringan LAN (Tim AI & Server)
+Jika menggunakan 2 PC di jaringan LAN Gigabit (misalnya PC 1 di `192.168.1.10` menjalankan `gemma2:9b` dan PC 2 di `192.168.1.11` menjalankan `deepseek-r1:8b`), cukup ubah file `backend/.env` di PC 1 menjadi:
+```env
+OLLAMA_HOST=http://192.168.1.10:11434
+OLLAMA_SECONDARY_HOST=http://192.168.1.11:11434
+OLLAMA_MODEL=gemma2:9b
+OLLAMA_DRAFTING_MODEL=deepseek-r1:8b
+```
+Backend akan otomatis mengarahkan request model Gemma ke PC 1 dan request model DeepSeek / Perumusan Hukum ke PC 2.
 
 ---
 
-## 4. Cheat-Sheet Tim: Kalau Mau Edit Sesuatu, Buka File Mana?
-
-Bagian ini dibuat supaya teman-teman tim tidak perlu menebak-nebak lokasi kode saat dapat *task* baru:
-
-### Skenario 1: Mengubah Tampilan UI, Warna, Ukuran Huruf, atau Tampilan Mobile
-- **File yang diedit:**
-  - `frontend/src/app/globals.css` (semua variabel warna `--bg-main`, `--text-primary`, *layout* `.sidebar-shell`, dan aturan layar HP di `@media (max-width: 767px)`).
-  - `frontend/src/app/page.tsx` (komponen *header*, *dropdown* pemilih pajak, *sidebar* riwayat percakapan, dan *composer* input pesan).
-- **Tips untuk Tim Frontend:**
-  - Warna *badge* indikator tiap pajak ada di konstanta `TAX_THEMES` di bagian atas `frontend/src/app/page.tsx`.
-  - Kalau mau mengubah teks sapaan awal atau contoh pertanyaan (*starter cards*) saat ruang chat masih kosong, langsung ubah properti `starters` di dalam `TAX_THEMES` pada `frontend/src/app/page.tsx`.
-
-### Skenario 2: Menambah / Mengubah Data Objek Pajak & Ketentuan Tarif
-- **File yang diedit:**
-  - `backend/app/tax_db.py`
-- **Langkahnya:**
-  1. Buka `backend/app/tax_db.py`, cari variabel `SEED_RECORDS` (untuk data objek pajak/NOP/NPWPD) atau `SEED_REGULASI` (untuk penjelasan tarif, rumus, dan denda).
-  2. Tambahkan atau ubah baris datanya sesuai struktur tuple yang sudah ada.
-  3. Supaya data baru langsung masuk ke SQLite dan di-indeks ulang oleh Qdrant, hapus file database lama lalu nyalakan ulang backend, atau panggil endpoint re-index:
-     ```bash
-     rm -f backend/data/pbb_p2_lokal.db
-     curl -X POST http://localhost:8000/api/reindex
-     ```
-
-### Skenario 3: Menambah Kategori Pajak Daerah Baru (Misalnya: Pajak Kendaraan Bermotor / PKB)
-Kalau nanti kita diminta menambah kategori ke-6 (misalnya `PKB`), cukup lakukan 4 langkah ini:
-1. **`backend/app/tax_db.py`**: Tambahkan definisi `"PKB"` ke dalam dictionary `TAX_THEMES`, lalu masukkan data sampelnya ke `SEED_RECORDS` dan `SEED_REGULASI`.
-2. **`backend/app/ollama_service.py`**:
-   - Tambahkan kata kunci deteksi lintas-tema (seperti `"stnk"`, `"pkb"`, `"kendaraan"`, `"plat nomor"`) ke `THEME_KEYWORDS["PKB"]`.
-   - Tambahkan 3–4 kalimat rekomendasi pertanyaan ke `prompts_by_theme["PKB"]` di dalam fungsi `_generate_follow_ups()`.
-3. **`frontend/src/app/page.tsx`**: Tambahkan objek konfigurasi `"PKB"` ke array `TAX_THEMES` supaya muncul di menu *dropdown* atas dan memiliki contoh pertanyaan awal.
-4. Restart backend atau jalankan `POST /api/reindex`.
-
-### Skenario 4: Mengubah Gaya Bahasa AI / System Prompt atau Mengganti Model LLM
-- **File yang diedit:**
-  - `backend/app/ollama_service.py` -> fungsi `build_thematic_system_prompt(tema_pajak: str)` untuk mengubah instruksi gaya bahasa AI.
-  - `backend/.env` -> ubah `DEFAULT_CHAT_MODEL=qwen2.5:7b-instruct` ke nama model Ollama lain yang terpasang di server (misalnya `llama3.1:8b` atau `gemma2:9b`).
-
----
-
-## 5. Daftar Endpoint API Backend (Port `8000`)
+## 4. Daftar Endpoint API Backend (Port `8000`)
 
 | Method | Endpoint | Fungsi |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | Mengecek kesehatan server, status koneksi Ollama, jumlah baris di SQLite, dan status koleksi Qdrant. |
-| `GET` | `/api/sppt` | Mengambil data tabel `pajak_dki_records` dan `regulasi_dki_chunks` (bisa difilter dengan query `?tema_pajak=PBJT`). |
-| `POST` | `/api/chat/stream` | Endpoint utama *chat* yang mengalirkan respon dalam format **NDJSON** (*real-time streaming*). |
-| `POST` | `/api/chat` | Endpoint *chat* standar (non-streaming, langsung mengembalikan JSON utuh) untuk keperluan pengujian otomatis / integrasi. |
-| `POST` | `/api/reindex` | Memaksa Qdrant membangun ulang seluruh vektor dari isi SQLite terbaru. |
-
----
-
-## 6. Standar Kerapian Kode & Git untuk Tim
-
-Supaya repositori kita tetap bersih dan enak dipelihara bersama:
-1. **Jangan pernah commit file `.env` atau isi folder `backend/data/`** (file `.db` SQLite dan folder `qdrant_storage/` sudah masuk di `.gitignore`).
-2. **Validasi sebelum *push*:**
-   - Untuk perubahan Frontend, pastikan `npm run build` di folder `frontend/` lolos tanpa *error* TypeScript.
-   - Untuk perubahan Backend, pastikan endpoint `GET http://localhost:8000/api/health` mengembalikan `"status": "ok"`.
-3. **Gunakan penamaan commit yang jelas:** misalnya `feat(pbjt): tambah filter pencarian kecamatan` atau `fix(ui): rapikan drawer sidebar di layar mobile`.
+| `GET` | `/api/health` | Mengecek status server, koneksi Ollama, jumlah objek pajak, dan jumlah pasal di `korpus_hukum_dki`. |
+| `GET` | `/api/korpus-hukum` | Mengambil daftar pasal & dasar hukum dari SQLite (bisa difilter dengan `?tema_pajak=PBB-P2`). |
+| `POST` | `/api/chat/stream` | Endpoint utama *chat* dengan *streaming* **NDJSON** (menerima `message`, `tema_pajak`, `mode_kapabilitas`, `model`, `history`). |
+| `POST` | `/api/chat` | Endpoint *chat* non-streaming (mengembalikan JSON utuh) untuk keperluan pengujian otomatis QA. |
+| `POST` | `/api/reindex` | Memperbarui tabel SQLite dan membangun ulang seluruh indeks vektor Qdrant. |

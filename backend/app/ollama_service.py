@@ -6,19 +6,46 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 import httpx
 
 from .config import (
+    DEEPSEEK_DRAFTING_MODEL,
     DEFAULT_CHAT_MODEL,
     OLLAMA_API_KEY,
     OLLAMA_CLOUD_URL,
     OLLAMA_LOCAL_URL,
+    OLLAMA_SECONDARY_URL,
 )
 from .tax_db import (
     TAX_THEMES,
     daftar_tunggakan_pajak_dki,
+    get_all_legal_corpus,
     get_all_sppt_records,
     get_regulasi_chunks,
     rekapitulasi_pajak_dki,
+    susun_rancangan_hukum_dki,
+    telusuri_pasal_hukum_dki,
 )
 from .vector_store import vector_store
+
+# Modular Capability Modes for Easy Feature Scaling
+CAPABILITY_MODES: Dict[str, Dict[str, str]] = {
+    "konsultasi": {
+        "code": "konsultasi",
+        "label": "Konsultasi Tarif & Data",
+        "preferred_model": DEFAULT_CHAT_MODEL,
+        "description": "Cek objek pajak, simulasi rumus, tarif, tunggakan, dan rekap wilayah.",
+    },
+    "pasal_hukum": {
+        "code": "pasal_hukum",
+        "label": "Pasal & Dasar Hukum",
+        "preferred_model": DEFAULT_CHAT_MODEL,
+        "description": "Telusur bunyi pasal, ayat, hierarki dasar hukum, dan norma regulasi.",
+    },
+    "perumusan_hukum": {
+        "code": "perumusan_hukum",
+        "label": "Perumusan Hukum (Drafting)",
+        "preferred_model": DEEPSEEK_DRAFTING_MODEL,
+        "description": "Susun draf pasal baru, konsiderans Menimbang/Mengingat, & kajian regulasi.",
+    },
+}
 
 THEME_KEYWORDS: Dict[str, List[str]] = {
     "PBB-P2": [
@@ -80,6 +107,50 @@ THEME_KEYWORDS: Dict[str, List[str]] = {
     ],
 }
 
+DRAFTING_KEYWORDS = [
+    "rumuskan",
+    "merumuskan",
+    "perumusan",
+    "rancangan",
+    "draf",
+    "draft",
+    "legal drafting",
+    "konsiderans",
+    "menimbang",
+    "mengingat",
+    "susun pasal",
+    "buatkan pasal",
+    "usulan pasal",
+    "naskah akademik",
+    "klausul",
+]
+
+LEGAL_BASIS_KEYWORDS = [
+    "pasal",
+    "ayat",
+    "dasar hukum",
+    "landasan hukum",
+    "hierarki",
+    "kaidah",
+    "norma",
+    "ketentuan hukum",
+    "subjek hukum",
+    "pengecualian objek",
+    "bunyi pasal",
+]
+
+
+def _resolve_capability_mode(question: str, requested_mode: Optional[str] = None) -> str:
+    """Resolve active capability mode from explicit user selection or prompt intent."""
+    q_lower = question.lower()
+    if any(k in q_lower for k in DRAFTING_KEYWORDS):
+        return "perumusan_hukum"
+    if any(k in q_lower for k in LEGAL_BASIS_KEYWORDS):
+        return "pasal_hukum"
+    if requested_mode and requested_mode in CAPABILITY_MODES:
+        return requested_mode
+    return "konsultasi"
+
 
 def _detect_cross_theme(question: str, active_tema: str) -> Optional[str]:
     """Check if the user prompt targets a different regional tax category."""
@@ -101,39 +172,104 @@ def _detect_cross_theme(question: str, active_tema: str) -> Optional[str]:
     return best_theme if best_score > 0 else None
 
 
-def _generate_follow_ups(question: str, tema: str) -> List[str]:
-    """Return 3 contextual follow-up queries for the active tax theme."""
+def _generate_follow_ups(question: str, tema: str, mode_kapabilitas: str = "konsultasi") -> List[str]:
+    """Return 3 contextual follow-up queries for the active tax theme and capability mode."""
     q_lower = question.lower()
+
+    if mode_kapabilitas == "perumusan_hukum":
+        drafting_prompts: Dict[str, List[str]] = {
+            "PBB-P2": [
+                "Rumuskan draf pasal insentif pengurangan PBB-P2 untuk bangunan hijau (Green Building) di DKI Jakarta",
+                "Susun konsiderans Menimbang & Mengingat untuk Pergub Pembebasan PBB-P2 Hunian di bawah Rp 2 Miliar",
+                "Tampilkan pasal induk acuan dasar pengenaan dan NJOPTKP PBB-P2 DKI Jakarta",
+            ],
+            "PBJT": [
+                "Rumuskan draf pasal kewajiban alat perekam transaksi elektronik (e-POS) untuk Wajib Pajak PBJT Restoran",
+                "Susun konsiderans & rancangan pasal batas omzet UMKM yang dikecualikan dari PBJT Makanan/Minuman",
+                "Tampilkan dasar hukum tarif 10% dan 40% pada PBJT DKI Jakarta",
+            ],
+            "BPHTB": [
+                "Rumuskan draf pasal pemberian insentif BPHTB 0% bagi kepemilikan rumah pertama masyarakat di DKI",
+                "Susun rancangan pasal integrasi validasi SSPD-BPHTB elektronik dengan sistem PPAT dan BPN",
+                "Tampilkan bunyi pasal objek dan NPOPTKP BPHTB Waris vs Jual Beli",
+            ],
+            "REKLAME": [
+                "Rumuskan draf pasal penataan reklame LED Videotron pada Kawasan Kendali Ketat DKI Jakarta",
+                "Susun konsiderans & pasal indeks Nilai Sewa Reklame (NSR) untuk media digital luar ruang",
+                "Tampilkan bunyi pasal dasar pengenaan dan tarif 25% Pajak Reklame",
+            ],
+            "PAT": [
+                "Rumuskan draf pasal pembatasan pengambilan air tanah pada zona penurunan tanah kritis di DKI",
+                "Susun rancangan pasal kewajiban meter air otomatis (AMR) bagi industri Wajib Pajak Air Tanah",
+                "Tampilkan dasar hukum rumus NPAT dan tarif 20% Pajak Air Tanah",
+            ],
+        }
+        candidates = drafting_prompts.get(tema, drafting_prompts["PBB-P2"])
+        filtered = [p for p in candidates if p.lower()[:22] not in q_lower]
+        return (filtered or candidates)[:3]
+
+    if mode_kapabilitas == "pasal_hukum":
+        legal_prompts: Dict[str, List[str]] = {
+            "PBB-P2": [
+                "Tampilkan bunyi pasal objek, subjek, dan pengecualian PBB-P2 di DKI Jakarta",
+                "Apa dasar hukum batas NJOPTKP Rp 60 juta dan pembebasan PBB-P2 100%?",
+                "Rumuskan draf pasal baru untuk insentif PBB-P2 bangunan pendidikan & kesehatan",
+            ],
+            "PBJT": [
+                "Tampilkan bunyi pasal ruang lingkup 5 sektor objek PBJT di DKI Jakarta",
+                "Apa dasar hukum pembedaan tarif PBJT 10% (Restoran/Hotel) dan 40% (Hiburan Tertentu)?",
+                "Rumuskan draf pasal pengawasan pelaporan e-SPTPD PBJT berbasis sistem elektronik",
+            ],
+            "BPHTB": [
+                "Tampilkan bunyi pasal objek perolehan hak dan perhitungan NPOPKP pada BPHTB",
+                "Apa dasar hukum penetapan NPOPTKP Rp 80 Juta (Umum) dan Rp 350 Juta (Waris)?",
+                "Rumuskan draf pasal keringanan BPHTB untuk program hunian terjangkau di DKI Jakarta",
+            ],
+            "REKLAME": [
+                "Tampilkan bunyi pasal penyelenggaraan reklame pada Kawasan Kendali Ketat DKI",
+                "Apa dasar hukum perhitungan Nilai Sewa Reklame (NSR) dan tarif 25%?",
+                "Rumuskan draf pasal sanksi administratif bagi reklame tanpa SKPD di jalan protokol",
+            ],
+            "PAT": [
+                "Tampilkan bunyi pasal objek Pajak Air Tanah dan pengecualian rumah tangga",
+                "Apa dasar hukum komponen Sumber Daya Alam pada perhitungan NPAT?",
+                "Rumuskan draf pasal zona konservasi air tanah dan transisi perpipaan di DKI Jakarta",
+            ],
+        }
+        candidates = legal_prompts.get(tema, legal_prompts["PBB-P2"])
+        filtered = [p for p in candidates if p.lower()[:22] not in q_lower]
+        return (filtered or candidates)[:3]
+
     prompts_by_theme: Dict[str, List[str]] = {
         "PBB-P2": [
             "Tampilkan objek PBB-P2 DKI yang masih menunggak beserta dendanya",
+            "Tampilkan bunyi pasal & dasar hukum NJOPTKP serta pembebasan PBB-P2 100%",
+            "Rumuskan draf pasal insentif pengurangan PBB-P2 untuk bangunan ramah lingkungan",
             "Rekapitulasi realisasi PBB-P2 DKI Jakarta per Kota Administrasi",
-            "Apa syarat bebas PBB-P2 100% dan NJOPTKP Rp 60 juta di DKI?",
-            "Rincian SPPT NOP 31.74.010.003.008-0042.0 di SCBD Jakarta Selatan",
         ],
         "PBJT": [
             "Daftar Wajib Pajak PBJT yang belum lunas beserta denda e-SPTPD",
-            "Perbandingan tarif PBJT Restoran (10%) dan Hiburan Tertentu (40%)",
+            "Tampilkan bunyi pasal & dasar hukum tarif PBJT Restoran (10%) dan Hiburan (40%)",
+            "Rumuskan draf pasal kewajiban perekam transaksi online untuk PBJT Restoran",
             "Rekapitulasi ketetapan dan realisasi PBJT per Kota Administrasi",
-            "Tampilkan seluruh objek PBJT Restoran, Hotel, dan Hiburan di DKI",
         ],
         "BPHTB": [
             "Berapa perbandingan NPOPTKP Jual Beli (Rp 80 Juta) vs Waris (Rp 350 Juta)?",
+            "Tampilkan bunyi pasal & dasar hukum objek BPHTB serta tarif 5%",
+            "Rumuskan draf pasal insentif BPHTB untuk perolehan rumah pertama di DKI Jakarta",
             "Cek transaksi SSPD BPHTB yang belum tervalidasi / belum lunas",
-            "Rekapitulasi ketetapan dan realisasi BPHTB di DKI Jakarta",
-            "Tampilkan seluruh data SSPD BPHTB di DKI Jakarta",
         ],
         "REKLAME": [
             "Cek SKPD Reklame yang belum lunas beserta rincian dendanya",
-            "Bagaimana aturan kawasan protokol dan tarif 25% Pajak Reklame?",
+            "Tampilkan bunyi pasal Kawasan Kendali Ketat dan tarif 25% Pajak Reklame",
+            "Rumuskan draf pasal pengaturan reklame LED pada gedung protokol DKI Jakarta",
             "Rekapitulasi ketetapan dan realisasi Pajak Reklame DKI Jakarta",
-            "Tampilkan seluruh objek Videotron & Billboard di DKI Jakarta",
         ],
         "PAT": [
             "Tampilkan SKPD Pajak Air Tanah yang masih menunggak di DKI",
-            "Bagaimana cara hitung NPAT dan tarif 20% Pajak Air Tanah?",
+            "Tampilkan bunyi pasal perhitungan NPAT dan tarif 20% Pajak Air Tanah",
+            "Rumuskan draf pasal pengendalian pengambilan air tanah industri di DKI Jakarta",
             "Rekapitulasi ketetapan dan realisasi Pajak Air Tanah per wilayah",
-            "Tampilkan seluruh Wajib Pajak Air Tanah di DKI Jakarta",
         ],
     }
     candidates = prompts_by_theme.get(tema, prompts_by_theme["PBB-P2"])
@@ -141,25 +277,69 @@ def _generate_follow_ups(question: str, tema: str) -> List[str]:
     return (filtered or candidates)[:3]
 
 
-def build_thematic_system_prompt(tema_pajak: str) -> str:
+def build_thematic_system_prompt(tema_pajak: str, mode_kapabilitas: str = "konsultasi") -> str:
     theme_info = TAX_THEMES.get(tema_pajak.upper(), TAX_THEMES["PBB-P2"])
     theme_code = theme_info["code"]
     theme_name = theme_info["name"]
 
-    return f"""Anda adalah **Jakarta SmartTax 2026** (dikembangkan oleh **Tim AI Jakarta SmartTax 2026** — Bapenda Provinsi DKI Jakarta) pada kategori **{theme_name}**.
-Panduan Jawaban:
-1. Jawab pertanyaan seputar **{theme_name} Provinsi DKI Jakarta** hanya berdasarkan KONTEKS DATA LOKAL DKI JAKARTA yang diberikan.
-2. Jangan menggunakan sumber eksternal, internet, situs web luar, atau asumsi di luar data lokal.
-3. Jika pengguna menanyakan kategori pajak lain di luar **{theme_code}**, sampaikan secara singkat bahwa ruang percakapan sedang fokus pada **{theme_code}** dan sarankan menekan tombol pindah kategori di bawah pesan.
-4. Jika data objek pajak atau NOP/NPWPD yang dicari tidak terdaftar di basis data lokal, sampaikan dengan jelas bahwa data tersebut belum terdaftar pada arsip lokal {theme_code} Bapenda DKI Jakarta.
-5. Gunakan bahasa Indonesia yang lugas, ramah, mudah dipahami (tanpa perlu mengutip nomor peraturan daerah yang rumit), dan sajikan rincian angka dalam tabel Markdown yang rapi."""
+    base_rules = (
+        f"Anda adalah **Jakarta SmartTax 2026** (dikembangkan oleh **Tim AI Jakarta SmartTax 2026** — Bapenda Provinsi DKI Jakarta) "
+        f"pada kategori **{theme_name}**.\n"
+        f"PRINSIP ANTI-HALUSINASI (STRICT GROUNDED RAG):\n"
+        f"1. Seluruh angka tarif, rumus, data objek pajak, bunyi pasal, maupun acuan perumusan hukum WAJIB bersumber 100% dari KONTEKS DATA LOKAL DKI JAKARTA yang disuntikkan di bawah.\n"
+        f"2. Dilarang keras mengarang angka, mengarang nomor pasal di luar konteks lokal, atau mengambil asumsi dari internet.\n"
+        f"3. Jika pengguna menanyakan kategori pajak lain di luar **{theme_code}**, sampaikan secara singkat bahwa ruang percakapan sedang fokus pada **{theme_code}** dan sarankan menekan tombol pindah kategori di bawah pesan.\n"
+    )
+
+    if mode_kapabilitas == "perumusan_hukum":
+        return (
+            base_rules
+            + f"4. Anda sedang berada dalam **Mode Perumusan Dasar Hukum (Legal Drafting AI)**. Susun rumusan regulasi secara sistematis meliputi:\n"
+            f"   - **Judul Rancangan Instrumen** (Peraturan Gubernur / Keputusan Kepala Bapenda)\n"
+            f"   - **Konsiderans Menimbang** (Landasan Filosofis, Sosiologis, dan Yuridis)\n"
+            f"   - **Dasar Hukum Mengingat** (Mengacu pada korpus pasal lokal {theme_code})\n"
+            f"   - **Rumusan Batang Tubuh (Pasal & Ayat)** yang terstruktur, normatif, dan selaras dengan tarif/ketentuan lokal {theme_code}\n"
+            f"   - **Catatan Harmonisasi & Mitigasi Risiko Hukum**."
+        )
+
+    if mode_kapabilitas == "pasal_hukum":
+        return (
+            base_rules
+            + f"4. Anda sedang berada dalam **Mode Telusur Pasal & Dasar Hukum**. Tampilkan secara rinci:\n"
+            f"   - **Kode & Nomor Pasal/Ayat** beserta Bab/Bagiannya dari korpus hukum lokal {theme_code}\n"
+            f"   - **Bunyi Norma Hukum** per ayat secara utuh dan akurat\n"
+            f"   - **Kaidah Perumusan / Implikasi Pelaksanaan** bagi Wajib Pajak maupun Bapenda DKI Jakarta."
+        )
+
+    return (
+        base_rules
+        + f"4. Sajikan jawaban yang lugas, akurat, dan mudah dipahami dalam tabel Markdown yang rapi."
+    )
 
 
-def _run_local_pre_lookup(question: str, tema_pajak: str) -> List[Dict[str, Any]]:
-    """Query SQLite tables scoped to the active DKI Jakarta tax theme."""
+def _run_local_pre_lookup(
+    question: str, tema_pajak: str, mode_kapabilitas: str = "konsultasi"
+) -> List[Dict[str, Any]]:
+    """Query SQLite tables (tax records, tariff chunks, legal corpus, and drafting engine) scoped to the active theme."""
     q_lower = question.lower()
     tema = tema_pajak.upper() if tema_pajak.upper() in TAX_THEMES else "PBB-P2"
     tool_outputs: List[Dict[str, Any]] = []
+
+    if mode_kapabilitas == "perumusan_hukum" or any(k in q_lower for k in DRAFTING_KEYWORDS):
+        draft_pack = susun_rancangan_hukum_dki(topik_perumusan=question, tema_pajak=tema)
+        tool_outputs.append(
+            {"tool": "susun_rancangan_hukum_dki", "tema": tema, "data": draft_pack}
+        )
+
+    if (
+        mode_kapabilitas in ("pasal_hukum", "perumusan_hukum")
+        or any(k in q_lower for k in LEGAL_BASIS_KEYWORDS)
+    ):
+        pasal_rows = json.loads(telusuri_pasal_hukum_dki(kata_kunci=question, tema_pajak=tema))
+        if pasal_rows:
+            tool_outputs.append(
+                {"tool": "telusuri_pasal_hukum_dki", "tema": tema, "data": pasal_rows}
+            )
 
     if any(k in q_lower for k in ["tunggakan", "belum lunas", "menunggak", "denda", "telat", "terlambat"]):
         res = json.loads(daftar_tunggakan_pajak_dki(tema_pajak=tema))
@@ -191,7 +371,11 @@ def _run_local_pre_lookup(question: str, tema_pajak: str) -> List[Dict[str, Any]
                 matched_rows.append(r)
                 break
 
-    if not matched_rows and any(k in q_lower for k in ["tampilkan", "lihat", "daftar", "semua", "cek", "contoh", "data", "objek"]):
+    if (
+        not matched_rows
+        and mode_kapabilitas == "konsultasi"
+        and any(k in q_lower for k in ["tampilkan", "lihat", "daftar", "semua", "cek", "contoh", "data", "objek"])
+    ):
         matched_rows = theme_rows
 
     if matched_rows:
@@ -210,8 +394,9 @@ def _build_local_deterministic_answer(
     qdrant_hits: List[Dict[str, Any]],
     tool_outputs: List[Dict[str, Any]],
     suggested_theme: Optional[str] = None,
+    mode_kapabilitas: str = "konsultasi",
 ) -> str:
-    """Format a structured Markdown response from local SQLite and Qdrant results."""
+    """Format a 100% grounded Markdown response from local SQLite and Qdrant results (Zero-Hallucination Engine)."""
     tema = tema_pajak.upper() if tema_pajak.upper() in TAX_THEMES else "PBB-P2"
     theme_name = TAX_THEMES[tema]["name"]
     lines: List[str] = []
@@ -221,9 +406,69 @@ def _build_local_deterministic_answer(
         target_name = TAX_THEMES[suggested_theme]["name"]
         return (
             f"Pertanyaan Anda berkaitan dengan **{target_name}**, sedangkan ruang percakapan ini sedang berada pada kategori **{theme_name}**.\n\n"
-            f"Silakan klik tombol **Pindah ke {suggested_theme}** di bawah pesan ini untuk langsung menanyakan ulang pada data **{suggested_theme} DKI Jakarta**."
+            f"Silakan klik tombol **Pindah ke {suggested_theme}** di bawah pesan ini untuk langsung menanyakan ulang pada korpus data & dasar hukum **{suggested_theme} DKI Jakarta**."
         )
 
+    # 1. Mode Perumusan Dasar Hukum (Legal Drafting Engine)
+    for t in tool_outputs:
+        if t["tool"] == "susun_rancangan_hukum_dki":
+            d = t["data"]
+            acuan_list = d.get("pasal_induk_acuan", [])
+            lines.append(f"### Rancangan Perumusan Dasar Hukum ({tema} — DKI Jakarta)")
+            lines.append(
+                f"Berikut draf rumusan regulasi yang disusun secara ketat berdasarkan **Korpus Hukum Lokal {theme_name}**:\n\n"
+                f"**Bentuk Instrumen:** {d['instrumen_disarankan']}\n"
+                f"**Fokus Pengaturan:** *{d['topik_perumusan']}*"
+            )
+            lines.append(
+                "#### 1. Konsiderans `MENIMBANG`\n"
+                + "\n".join(f"- {m}" for m in d["konsiderans_menimbang"])
+            )
+            lines.append(
+                "#### 2. Dasar Hukum `MENGINGAT` (Pasal Induk Terkait)\n"
+                + "\n".join(f"- **{m}**" for m in d["dasar_hukum_mengingat"])
+            )
+
+            lines.append("#### 3. Rancangan Batang Tubuh (Pasal & Ayat)")
+            lines.append(
+                f"**Pasal 1 — Ruang Lingkup & Subjek Pengaturan**\n"
+                f"(1) Pengaturan dalam ketentuan ini berlaku terhadap objek dan subjek **{theme_name}** di wilayah Provinsi DKI Jakarta.\n"
+                f"(2) Pelaksanaan pemungutan, verifikasi, dan pengawasan mengacu pada basis data perpajakan daerah Bapenda Provinsi DKI Jakarta.\n\n"
+                f"**Pasal 2 — Norma Pokok & Ketentuan Tarif / Insentif**\n"
+                f"(1) Dalam rangka optimalisasi penerimaan daerah dan keadilan fiskal terkait *{d['topik_perumusan']}*, pengenaan **{tema}** dilaksanakan sesuai batasan tarif dan dasar pengenaan yang berlaku di Provinsi DKI Jakarta.\n"
+                f"(2) Pemberian keringanan, pengurangan, atau tata cara pelaporan elektronik diverifikasi secara sistem melalui portal resmi pajak daerah DKI Jakarta.\n\n"
+                f"**Pasal 3 — Pengawasan & Sanksi Administratif**\n"
+                f"(1) Wajib Pajak yang tidak memenuhi kewajiban pelaporan atau pembayaran sesuai jatuh tempo dikenakan sanksi administratif sesuai ketentuan peraturan perpajakan daerah.\n"
+                f"(2) Ketentuan ini mulai berlaku pada tanggal ditetapkan."
+            )
+
+            if acuan_list:
+                lines.append("#### 4. Matriks Harmonisasi Pasal Induk Acuan")
+                lines.append("| Kode Korpus | Pasal & Ayat Induk | Topik Norma | Kaidah Perumusan (Legal Drafting) |")
+                lines.append("| :--- | :--- | :--- | :--- |")
+                for ac in acuan_list:
+                    lines.append(
+                        f"| `{ac['kode_pasal']}` | **{ac['pasal_ayat']}** | {ac['tentang']} | {ac['kaidah_perumusan']} |"
+                    )
+            return "\n\n".join(lines)
+
+    # 2. Mode Telusur Pasal & Dasar Hukum
+    for t in tool_outputs:
+        if t["tool"] == "telusuri_pasal_hukum_dki" and (
+            mode_kapabilitas == "pasal_hukum" or any(k in q_lower for k in LEGAL_BASIS_KEYWORDS)
+        ):
+            pasal_list = t["data"]
+            lines.append(f"### Korpus Pasal & Dasar Hukum {theme_name} — DKI Jakarta")
+            for p in pasal_list:
+                lines.append(
+                    f"#### `{p['kode_pasal']}` — {p['pasal_ayat']}: {p['tentang']}\n"
+                    f"- **Instrumen & Bagian:** {p['jenis_instrumen']} ({p['bab_bagian']})\n"
+                    f"- **Bunyi Norma Hukum:**\n"
+                    + "\n".join(f"  > {ln}" for ln in p["bunyi_norma"].split("\n"))
+                    + f"\n- **Kaidah Perumusan / Implikasi Regulasi:** {p['kaidah_perumusan']}"
+                )
+
+    # 3. Data Tunggakan
     for t in tool_outputs:
         if t["tool"] == "daftar_tunggakan_pajak_dki":
             d = t["data"]
@@ -242,6 +487,7 @@ def _build_local_deterministic_answer(
                         f"| `{item['nomor_identitas']}` | **{item['nama_wp']}** ({item['nama_objek']}) | {item['kecamatan']}, {item['kota_administrasi']} | {item['masa_atau_tahun_pajak']} | Rp {item['pokok_pajak_rp']:,} | Rp {item['denda_rp']:,} | **Rp {item['total_tagihan_rp']:,}** |"
                     )
 
+    # 4. Rekapitulasi Wilayah
     for t in tool_outputs:
         if t["tool"] == "rekapitulasi_pajak_dki":
             d = t["data"]
@@ -261,6 +507,7 @@ def _build_local_deterministic_answer(
                     f"| {w['kota_administrasi']} | {w['kecamatan']} | {w['jumlah_objek']} | Rp {w['total_ketetapan_rp']:,} | Rp {w['realisasi_lunas_rp']:,} | **Rp {w['total_sisa_tagihan_rp']:,}** |"
                 )
 
+    # 5. Pencarian Objek Pajak
     for t in tool_outputs:
         if t["tool"] == "cari_data_pajak_dki" and t["data"] and not lines:
             lines.append(f"### Rincian Objek {theme_name} — DKI Jakarta")
@@ -273,6 +520,7 @@ def _build_local_deterministic_answer(
                 if len(t["data"]) == 1 and r.get("keterangan"):
                     lines.append(f"\n> **Catatan Ketetapan:** {r['keterangan']} (Jatuh Tempo: `{r['jatuh_tempo']}`)")
 
+    # 6. Ketentuan Tarif & Rumus
     if any(k in q_lower for k in ["tarif", "rumus", "njoptkp", "npoptkp", "denda", "jatuh tempo", "aturan", "ketentuan", "insentif", "bebas", "hitung", "syarat"]) or not lines:
         for t in tool_outputs:
             if t["tool"] == "regulasi_dki_lokal":
@@ -282,37 +530,66 @@ def _build_local_deterministic_answer(
     if not lines:
         lines.append(
             f"Data yang Anda cari belum terdaftar pada arsip lokal **{tema}** Bapenda DKI Jakarta. "
-            f"Coba masukkan nomor identitas pajak, nama objek, atau kecamatan di wilayah DKI Jakarta."
+            f"Coba masukkan nomor identitas pajak, nama objek, topik pasal hukum, atau kecamatan di wilayah DKI Jakarta."
         )
 
     return "\n\n".join(lines)
 
 
-async def stream_chat_with_local_pbb(
+async def stream_smarttax_chat(
     user_message: str,
     history: List[Dict[str, str]],
     model: str = DEFAULT_CHAT_MODEL,
     tema_pajak: str = "PBB-P2",
+    mode_kapabilitas: str = "konsultasi",
 ) -> AsyncGenerator[str, None]:
-    """Stream NDJSON response chunks for the selected DKI Jakarta regional tax theme."""
+    """Stream NDJSON response chunks for the selected DKI Jakarta tax theme and capability mode (Gemma / DeepSeek RAG)."""
     start_ts = time.perf_counter()
     tema = tema_pajak.upper() if (tema_pajak and tema_pajak.upper() in TAX_THEMES) else "PBB-P2"
     theme_label = TAX_THEMES[tema]["name"]
+    resolved_mode = _resolve_capability_mode(user_message, mode_kapabilitas)
+    mode_info = CAPABILITY_MODES.get(resolved_mode, CAPABILITY_MODES["konsultasi"])
+
+    selected_model = model
+    if resolved_mode == "perumusan_hukum" and model == DEFAULT_CHAT_MODEL:
+        selected_model = DEEPSEEK_DRAFTING_MODEL
+
+    status_stage_1 = {
+        "konsultasi": f"Menelusuri arsip data & tarif {tema} Bapenda DKI Jakarta...",
+        "pasal_hukum": f"Menelusuri korpus pasal & dasar hukum {tema} DKI Jakarta...",
+        "perumusan_hukum": f"Menyusun kerangka konsiderans & rancangan pasal {tema} DKI Jakarta...",
+    }.get(resolved_mode, f"Menelusuri arsip {tema} Bapenda DKI Jakarta...")
 
     yield json.dumps(
-        {"type": "status", "text": f"Menelusuri arsip {tema} Bapenda DKI Jakarta..."},
+        {"type": "status", "text": status_stage_1},
         ensure_ascii=False,
     ) + "\n"
 
     suggested_theme = _detect_cross_theme(user_message, tema)
-    qdrant_hits = vector_store.search(user_message, limit=6, tema_pajak=tema)
-    pre_tool_outputs = _run_local_pre_lookup(user_message, tema_pajak=tema)
+    preferred_doc_type = (
+        "pasal_hukum" if resolved_mode in ("pasal_hukum", "perumusan_hukum") else None
+    )
+    qdrant_hits = vector_store.search(
+        user_message, limit=6, tema_pajak=tema, doc_type=preferred_doc_type
+    )
+    if not qdrant_hits:
+        qdrant_hits = vector_store.search(user_message, limit=6, tema_pajak=tema)
+
+    pre_tool_outputs = _run_local_pre_lookup(
+        user_message, tema_pajak=tema, mode_kapabilitas=resolved_mode
+    )
     sql_tools_used = [t["tool"] for t in pre_tool_outputs]
-    follow_ups = _generate_follow_ups(user_message, tema)
+    follow_ups = _generate_follow_ups(user_message, tema, mode_kapabilitas=resolved_mode)
 
     await asyncio.sleep(0.08)
+    status_stage_2 = {
+        "konsultasi": f"Mencocokkan rincian objek & ketetapan {tema}...",
+        "pasal_hukum": f"Memverifikasi bunyi pasal & norma regulasi {tema}...",
+        "perumusan_hukum": f"Menyelaraskan draf batang tubuh pasal dengan korpus {tema}...",
+    }.get(resolved_mode, f"Mencocokkan rincian {tema}...")
+
     yield json.dumps(
-        {"type": "status", "text": f"Mencocokkan rincian objek & ketetapan {tema}..."},
+        {"type": "status", "text": status_stage_2},
         ensure_ascii=False,
     ) + "\n"
 
@@ -320,6 +597,8 @@ async def stream_chat_with_local_pbb(
         {
             "type": "sources",
             "tema_pajak": tema,
+            "mode_kapabilitas": resolved_mode,
+            "mode_label": mode_info["label"],
             "suggested_theme": suggested_theme,
             "qdrant_sources": qdrant_hits,
             "sql_tools_used": sql_tools_used,
@@ -334,6 +613,7 @@ async def stream_chat_with_local_pbb(
             qdrant_hits,
             pre_tool_outputs,
             suggested_theme=suggested_theme,
+            mode_kapabilitas=resolved_mode,
         )
         words = re.split(r"(\s+)", deterministic_text)
         batch = ""
@@ -349,9 +629,10 @@ async def stream_chat_with_local_pbb(
             {
                 "type": "done",
                 "tema_pajak": tema,
+                "mode_kapabilitas": resolved_mode,
                 "suggested_theme": suggested_theme,
                 "follow_ups": follow_ups,
-                "model_used": model,
+                "model_used": selected_model,
                 "duration_ms": elapsed_ms,
             },
             ensure_ascii=False,
@@ -359,11 +640,12 @@ async def stream_chat_with_local_pbb(
         return
 
     context_blocks: List[str] = [
-        f"KATEGORI PAJAK AKTIF: {theme_label} — PROVINSI DKI JAKARTA"
+        f"KATEGORI PAJAK AKTIF: {theme_label} — PROVINSI DKI JAKARTA",
+        f"MODE KAPABILITAS AKTIF: {mode_info['label']} ({resolved_mode})",
     ]
     if pre_tool_outputs:
         context_blocks.append(
-            f"=== DATA SQLITE LOKAL ({tema} DKI JAKARTA) ===\n"
+            f"=== DATA TERSTRUKTUR & KORPUS HUKUM SQLITE LOKAL ({tema} DKI JAKARTA) ===\n"
             + json.dumps(pre_tool_outputs, ensure_ascii=False, indent=2)
         )
     if qdrant_hits:
@@ -378,13 +660,13 @@ async def stream_chat_with_local_pbb(
         )
 
     grounded_user_prompt = (
-        f"KONTEKS DATA LOKAL BAPENDA DKI JAKARTA:\n"
+        f"KONTEKS DATA & KORPUS HUKUM LOKAL BAPENDA DKI JAKARTA:\n"
         f"{chr(10).join(context_blocks)}\n\n"
-        f"PERTANYAAN PENGGUNA (Tema Aktif: {tema}):\n{user_message}\n\n"
-        f"Jawab hanya dari konteks data lokal {tema} DKI Jakarta di atas tanpa sumber eksternal."
+        f"PERTANYAAN / INSTRUKSI PENGGUNA (Tema: {tema} | Mode: {mode_info['label']}):\n{user_message}\n\n"
+        f"Jawab atau rumuskan draf hukum HANYA berdasarkan konteks data & korpus pasal lokal {tema} DKI Jakarta di atas (Zero-Hallucination)."
     )
 
-    system_prompt = build_thematic_system_prompt(tema)
+    system_prompt = build_thematic_system_prompt(tema, mode_kapabilitas=resolved_mode)
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in history[-6:]:
         if msg.get("role") in ("user", "assistant") and msg.get("content"):
@@ -392,18 +674,23 @@ async def stream_chat_with_local_pbb(
     messages.append({"role": "user", "content": grounded_user_prompt})
 
     use_direct_cloud = bool(OLLAMA_API_KEY) and (
-        ":cloud" in model or model.startswith("gemma4:31b")
+        ":cloud" in selected_model or selected_model.startswith("gemma4:31b")
     )
     if use_direct_cloud:
         base_url = OLLAMA_CLOUD_URL
-        api_model = "gemma4:31b" if model == "gemma4:cloud" else model
+        api_model = "gemma4:31b" if selected_model == "gemma4:cloud" else selected_model
         headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"}
+    elif "deepseek" in selected_model.lower():
+        base_url = OLLAMA_SECONDARY_URL
+        api_model = selected_model
+        headers = {}
     else:
         base_url = OLLAMA_LOCAL_URL
-        api_model = model
+        api_model = selected_model
         headers = {}
 
     streamed_any_token = False
+    in_deepseek_think_tag = False
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -415,7 +702,11 @@ async def stream_chat_with_local_pbb(
                     "model": api_model,
                     "messages": messages,
                     "stream": True,
-                    "options": {"temperature": 0.0},
+                    "options": {
+                        "temperature": 0.0,
+                        "top_p": 0.1,
+                        "repeat_penalty": 1.1,
+                    },
                 },
             ) as resp:
                 if resp.status_code == 200:
@@ -431,6 +722,19 @@ async def stream_chat_with_local_pbb(
                         thinking_delta = msg_part.get("thinking") or ""
                         content_delta = msg_part.get("content") or ""
 
+                        if "<think>" in content_delta:
+                            in_deepseek_think_tag = True
+                            content_delta = content_delta.replace("<think>", "")
+                        if "</think>" in content_delta:
+                            parts = content_delta.split("</think>", 1)
+                            if parts[0]:
+                                yield json.dumps(
+                                    {"type": "thinking", "delta": parts[0]},
+                                    ensure_ascii=False,
+                                ) + "\n"
+                            in_deepseek_think_tag = False
+                            content_delta = parts[1] if len(parts) > 1 else ""
+
                         if thinking_delta:
                             yield json.dumps(
                                 {"type": "thinking", "delta": thinking_delta},
@@ -438,11 +742,17 @@ async def stream_chat_with_local_pbb(
                             ) + "\n"
 
                         if content_delta:
-                            streamed_any_token = True
-                            yield json.dumps(
-                                {"type": "token", "delta": content_delta},
-                                ensure_ascii=False,
-                            ) + "\n"
+                            if in_deepseek_think_tag:
+                                yield json.dumps(
+                                    {"type": "thinking", "delta": content_delta},
+                                    ensure_ascii=False,
+                                ) + "\n"
+                            else:
+                                streamed_any_token = True
+                                yield json.dumps(
+                                    {"type": "token", "delta": content_delta},
+                                    ensure_ascii=False,
+                                ) + "\n"
     except Exception:
         pass
 
@@ -453,6 +763,7 @@ async def stream_chat_with_local_pbb(
             qdrant_hits,
             pre_tool_outputs,
             suggested_theme=suggested_theme,
+            mode_kapabilitas=resolved_mode,
         )
         words = re.split(r"(\s+)", deterministic_text)
         batch = ""
@@ -468,6 +779,7 @@ async def stream_chat_with_local_pbb(
         {
             "type": "done",
             "tema_pajak": tema,
+            "mode_kapabilitas": resolved_mode,
             "suggested_theme": suggested_theme,
             "follow_ups": follow_ups,
             "model_used": api_model,
@@ -477,20 +789,22 @@ async def stream_chat_with_local_pbb(
     ) + "\n"
 
 
-async def chat_with_local_pbb(
+async def run_smarttax_chat(
     user_message: str,
     history: List[Dict[str, str]],
     model: str = DEFAULT_CHAT_MODEL,
     tema_pajak: str = "PBB-P2",
+    mode_kapabilitas: str = "konsultasi",
 ) -> Dict[str, Any]:
     full_text = ""
     qdrant_sources: List[Dict[str, Any]] = []
     sql_tools_used: List[str] = []
     model_used = model
     suggested_theme: Optional[str] = None
+    resolved_mode = mode_kapabilitas
     follow_ups: List[str] = []
-    async for raw_line in stream_chat_with_local_pbb(
-        user_message, history, model, tema_pajak
+    async for raw_line in stream_smarttax_chat(
+        user_message, history, model, tema_pajak, mode_kapabilitas
     ):
         if not raw_line.strip():
             continue
@@ -501,6 +815,7 @@ async def chat_with_local_pbb(
             qdrant_sources = evt.get("qdrant_sources", [])
             sql_tools_used = evt.get("sql_tools_used", [])
             suggested_theme = evt.get("suggested_theme")
+            resolved_mode = evt.get("mode_kapabilitas", mode_kapabilitas)
         elif evt["type"] == "done":
             model_used = evt.get("model_used", model)
             follow_ups = evt.get("follow_ups", [])
@@ -508,9 +823,11 @@ async def chat_with_local_pbb(
     return {
         "answer": full_text.strip(),
         "tema_pajak": tema_pajak,
+        "mode_kapabilitas": resolved_mode,
         "suggested_theme": suggested_theme,
         "follow_ups": follow_ups,
         "model_used": model_used,
         "qdrant_sources": qdrant_sources,
         "sql_tools_used": sql_tools_used,
     }
+

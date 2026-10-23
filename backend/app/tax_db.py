@@ -432,6 +432,169 @@ DKI_REGULASI_CHUNKS: List[Dict[str, str]] = [
     },
 ]
 
+# Structured Legal Corpus (Pasal, Ayat, Dasar Hukum & Kaidah Perumusan) for Scaling Legal Intelligence
+DKI_LEGAL_CORPUS: List[Dict[str, Any]] = [
+    # ==================== PBB-P2 ====================
+    {
+        "kode_pasal": "PASAL-PBB-01",
+        "tema_pajak": "PBB-P2",
+        "jenis_instrumen": "Peraturan Daerah Provinsi DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bagian Kesatu — Objek, Subjek, dan Wajib Pajak PBB-P2",
+        "pasal_ayat": "Pasal 33 s.d. Pasal 35",
+        "tentang": "Objek, Pengecualian Objek, dan Subjek PBB-P2 DKI Jakarta",
+        "bunyi_norma": (
+            "(1) Objek PBB-P2 adalah Bumi dan/atau Bangunan yang dimiliki, dikuasai, dan/atau dimanfaatkan oleh orang pribadi atau Badan, kecuali kawasan yang digunakan untuk kegiatan usaha perkebunan, perhutanan, dan pertambangan.\n"
+            "(2) Dikecualikan dari objek PBB-P2 adalah kepemilikan/pemanfaatan untuk kantor pemerintah, ibadah, pemakaman umum, hutan lindung/taman kota, serta perwakilan diplomatik berdasarkan asas timbal balik.\n"
+            "(3) Subjek Pajak dan Wajib Pajak PBB-P2 adalah orang pribadi atau Badan yang secara nyata mempunyai suatu hak atas Bumi dan/atau memperoleh manfaat atas Bumi, dan/atau memiliki, menguasai, dan/atau memperoleh manfaat atas Bangunan."
+        ),
+        "kaidah_perumusan": (
+            "Gunakan pasal ini sebagai dasar hukum utama (Konsiderans Mengingat) saat merumuskan Peraturan Gubernur mengenai kriteria teknis bangunan fasilitas sosial, pendidikan, atau kesehatan yang diberikan pengurangan PBB-P2."
+        ),
+        "kata_kunci": "objek subjek wajib pajak pbb-p2 pengecualian fasilitas umum sosial",
+    },
+    {
+        "kode_pasal": "PASAL-PBB-02",
+        "tema_pajak": "PBB-P2",
+        "jenis_instrumen": "Peraturan Daerah & Peraturan Gubernur DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bagian Kedua — Dasar Pengenaan, NJOPTKP, dan Tarif PBB-P2",
+        "pasal_ayat": "Pasal 36 s.d. Pasal 39",
+        "tentang": "NJOP, Batas NJOPTKP Rp 60 Juta, Rasio Assessment (20%-100%), dan Tarif PBB-P2",
+        "bunyi_norma": (
+            "(1) Dasar pengenaan PBB-P2 adalah Nilai Jual Objek Pajak (NJOP) yang ditetapkan setiap tahun atau setiap 3 (tiga) tahun oleh Gubernur.\n"
+            "(2) Besaran NJOPTKP ditetapkan sebesar Rp 60.000.000,00 (enam puluh juta rupiah) untuk setiap Wajib Pajak atas 1 (satu) objek pajak dengan nilai NJOP tertinggi.\n"
+            "(3) Dasar pengenaan PBB-P2 yang digunakan untuk perhitungan pajak ditetapkan paling rendah 20% (dua puluh persen) dan paling tinggi 100% (seratus persen) dari NJOP setelah dikurangi NJOPTKP.\n"
+            "(4) Tarif PBB-P2 ditetapkan sebesar 0,5% (nol koma lima persen), dengan tarif khusus berupa keringanan/insentif bagi objek hunian rumah tinggal dan lahan produksi pangan/ternak."
+        ),
+        "kaidah_perumusan": (
+            "Kaidah delegasi: Pasal ini mendelegasikan kewenangan kepada Gubernur untuk menetapkan persentase NJOP yang dikenakan pajak (Assessment Ratio) dan klasterisasi tarif efektif hunian melalui Peraturan Gubernur setiap tahun pajak."
+        ),
+        "kata_kunci": "njop njoptkp 60 juta tarif 0.5 persen rasio pengenaan insentif hunian rumah tinggal",
+    },
+    {
+        "kode_pasal": "PASAL-PBB-03",
+        "tema_pajak": "PBB-P2",
+        "jenis_instrumen": "Peraturan Gubernur DKI Jakarta",
+        "hierarki_level": 2,
+        "bab_bagian": "Bab Insentif Fiskal & Pembebasan Pokok PBB-P2",
+        "pasal_ayat": "Pasal 4 s.d. Pasal 9 (Regulasi Insentif PBB-P2 Tahunan)",
+        "tentang": "Pembebasan Pokok 100% Hunian di Bawah Rp 2 Miliar & Keringanan Pembayaran",
+        "bunyi_norma": (
+            "(1) Gubernur memberikan pembebasan pokok PBB-P2 sebesar 100% (seratus persen) atas 1 (satu) objek pajak berupa rumah tinggal milik Orang Pribadi dengan NJOP sampai dengan Rp 2.000.000.000,00 (dua miliar rupiah).\n"
+            "(2) Apabila Wajib Pajak Orang Pribadi memiliki lebih dari 1 (satu) objek rumah tinggal, pembebasan 100% diberikan secara otomatis terhadap objek dengan NJOP terbesar di bawah batas Rp 2.000.000.000,00 yang tervalidasi NIK.\n"
+            "(3) Terhadap objek kedua dan seterusnya, diberikan faktor pengurang transisi agar kenaikan beban pajak terkendali."
+        ),
+        "kaidah_perumusan": (
+            "Acuan utama ketika merumuskan pembaruan Peraturan Gubernur tentang Insentif Fiskal PBB-P2, penghapusan sanksi administratif bunga 1% per bulan, atau penyesuaian ambang batas NJOP bebas pajak."
+        ),
+        "kata_kunci": "bebas pbb 100 persen 2 miliar nik orang pribadi keringanan sanksi bunga denda",
+    },
+
+    # ==================== PBJT ====================
+    {
+        "kode_pasal": "PASAL-PBJT-01",
+        "tema_pajak": "PBJT",
+        "jenis_instrumen": "Peraturan Daerah Provinsi DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bab PBJT — Objek dan Subjek Pajak Barang dan Jasa Tertentu",
+        "pasal_ayat": "Pasal 45 s.d. Pasal 52",
+        "tentang": "Ruang Lingkup 5 Sektor PBJT (Makanan/Minuman, Perhotelan, Parkir, Hiburan, Tenaga Listrik)",
+        "bunyi_norma": (
+            "(1) Objek PBJT merupakan penjualan, penyerahan, dan/atau konsumsi barang dan jasa tertentu yang meliputi: a. Makanan dan/atau Minuman; b. Tenaga Listrik; c. Jasa Perhotelan; d. Jasa Parkir; dan e. Jasa Kesenian dan Hiburan.\n"
+            "(2) Penjualan Makanan dan/atau Minuman mencakup restoran, kafe, rumah makan, warung, katering/jasa boga, serta penjualan melalui platform daring.\n"
+            "(3) Dikecualikan dari objek PBJT Makanan/Minuman adalah penyerahan dengan peredaran usaha (omzet) tidak melebihi batas tertentu yang ditetapkan untuk perlindungan pelaku usaha mikro."
+        ),
+        "kaidah_perumusan": (
+            "Gunakan pasal ini saat menyusun regulasi turunan mengenai batas omzet minimum usaha mikro (UMKM) yang dikecualikan dari pemungutan PBJT Restoran maupun integrasi alat perekam transaksi elektronik (e-POS)."
+        ),
+        "kata_kunci": "objek pbjt restoran makanan minuman hotel parkir hiburan listrik katering umkm omzet",
+    },
+    {
+        "kode_pasal": "PASAL-PBJT-02",
+        "tema_pajak": "PBJT",
+        "jenis_instrumen": "Peraturan Daerah Provinsi DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bagian Tarif dan Dasar Pengenaan PBJT",
+        "pasal_ayat": "Pasal 53 s.d. Pasal 57",
+        "tentang": "Dasar Pengenaan dan Struktur Tarif PBJT (10%, 40% Hiburan Tertentu, 3%/1,5% Listrik)",
+        "bunyi_norma": (
+            "(1) Dasar pengenaan PBJT adalah jumlah yang dibayarkan oleh konsumen barang atau jasa tertentu, termasuk biaya pelayanan (service charge).\n"
+            "(2) Tarif PBJT atas Makanan dan/atau Minuman, Jasa Perhotelan, Jasa Parkir, dan Jasa Kesenian dan Hiburan umum ditetapkan sebesar 10% (sepuluh persen).\n"
+            "(3) Khusus tarif PBJT atas Jasa Hiburan pada diskotek, karaoke, kelab malam, bar, dan mandi uap/spa ditetapkan sebesar 40% (empat puluh persen).\n"
+            "(4) Tarif PBJT atas konsumsi Tenaga Listrik ditetapkan sebesar 3% (umum/industri) dan 1,5% (dihasilkan sendiri)."
+        ),
+        "kaidah_perumusan": (
+            "Pasal ini menjadi rujukan mutlak (mandatory norm) dalam penyusunan Peraturan Gubernur tentang Tata Cara Pelaporan e-SPTPD, pengawasan transaksi online (fiscal device), dan pengenaan sanksi bunga keterlambatan setor."
+        ),
+        "kata_kunci": "tarif pbjt 10 persen 40 persen hiburan diskotek karaoke spa hotel restoran listrik service charge",
+    },
+
+    # ==================== BPHTB ====================
+    {
+        "kode_pasal": "PASAL-BPHTB-01",
+        "tema_pajak": "BPHTB",
+        "jenis_instrumen": "Peraturan Daerah Provinsi DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bab Bea Perolehan Hak atas Tanah dan Bangunan (BPHTB)",
+        "pasal_ayat": "Pasal 58 s.d. Pasal 64",
+        "tentang": "Objek Perolehan Hak, NPOP, NPOPTKP Rp 80 Juta / Rp 350 Juta, dan Tarif 5% BPHTB",
+        "bunyi_norma": (
+            "(1) Objek BPHTB adalah Perolehan Hak atas Tanah dan/atau Bangunan yang meliputi pemindahan hak (jual beli, tukar-menukar, hibah, hibah wasiat, waris, pemasukan dalam perseroan, lelang) dan pemberian hak baru.\n"
+            "(2) Dasar pengenaan BPHTB adalah Nilai Perolehan Objek Pajak (NPOP); apabila NPOP lebih rendah dari NJOP PBB-P2 tahun berjalan, maka yang digunakan adalah NJOP PBB-P2.\n"
+            "(3) Besaran NPOPTKP ditetapkan sebesar Rp 80.000.000,00 untuk perolehan hak umum pertama, dan paling sedikit Rp 350.000.000,00 untuk perolehan hak karena waris atau hibah wasiat dalam garis keturunan lurus satu derajat.\n"
+            "(4) Tarif BPHTB ditetapkan sebesar 5% (lima persen) dari NPOP Kena Pajak (NPOP dikurangi NPOPTKP)."
+        ),
+        "kaidah_perumusan": (
+            "Gunakan pasal ini sebagai landasan saat merumuskan Peraturan Gubernur tentang Validasi Elektronik SSPD-BPHTB terintegrasi PPAT/BPN, atau pemberian insentif BPHTB 0% bagi rumah pertama masyarakat berpenghasilan rendah (MBR)."
+        ),
+        "kata_kunci": "pasal bphtb npop npoptkp 80 juta 350 juta waris hibah jual beli ajb ppat bpn tarif 5 persen",
+    },
+
+    # ==================== PAJAK REKLAME ====================
+    {
+        "kode_pasal": "PASAL-REK-01",
+        "tema_pajak": "REKLAME",
+        "jenis_instrumen": "Peraturan Daerah & Peraturan Gubernur DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bab Pajak Reklame & Penataan Kawasan Kendali Ketat",
+        "pasal_ayat": "Pasal 65 s.d. Pasal 71",
+        "tentang": "Objek Pajak Reklame, Perhitungan Nilai Sewa Reklame (NSR), dan Tarif 25%",
+        "bunyi_norma": (
+            "(1) Objek Pajak Reklame adalah semua penyelenggaraan reklame meliputi reklame papan/billboard, videotron/megatron LED, kain, melekat/stiker, selebaran, berjalan pada kendaraan, udara, dan film/slide.\n"
+            "(2) Dasar pengenaan Pajak Reklame adalah Nilai Sewa Reklame (NSR) yang dihitung dari Nilai Kontrak Reklame (pihak ketiga) atau dihitung berdasarkan faktor kelas jalan, luas bidang, ketinggian, dan durasi tayang.\n"
+            "(3) Tarif Pajak Reklame ditetapkan sebesar 25% (dua puluh lima persen) dari NSR.\n"
+            "(4) Penyelenggaraan reklame pada Kawasan Kendali Ketat wajib berbentuk LED/Videotron yang menempel pada fasad gedung (building-attached) sesuai standar tata ruang provinsi."
+        ),
+        "kaidah_perumusan": (
+            "Gunakan pasal ini untuk merumuskan Keputusan Gubernur mengenai pembaruan indeks Harga Dasar Nilai Strategis Reklame (HDNSR), reklame digital di transportasi publik, atau sanksi penertiban reklame tanpa SKPD."
+        ),
+        "kata_kunci": "pasal reklame nsr tarif 25 persen videotron megatron billboard kawasan kendali ketat kelas jalan",
+    },
+
+    # ==================== PAJAK AIR TANAH (PAT) ====================
+    {
+        "kode_pasal": "PASAL-PAT-01",
+        "tema_pajak": "PAT",
+        "jenis_instrumen": "Peraturan Daerah & Peraturan Gubernur DKI Jakarta",
+        "hierarki_level": 1,
+        "bab_bagian": "Bab Pajak Air Tanah (PAT) & Pengendalian Ekstraksi Air Tanah",
+        "pasal_ayat": "Pasal 72 s.d. Pasal 77",
+        "tentang": "Objek Pengambilan Air Tanah, Rumus NPAT (HDA & FNA), dan Tarif 20% PAT",
+        "bunyi_norma": (
+            "(1) Objek Pajak Air Tanah (PAT) adalah pengambilan dan/atau pemanfaatan Air Tanah untuk tujuan komersial maupun industri, kecuali untuk keperluan dasar rumah tangga, pertanian rakyat, dan pemadaman kebakaran.\n"
+            "(2) Dasar pengenaan PAT adalah Nilai Perolehan Air Tanah (NPAT) yang dihitung berdasarkan Harga Dasar Air (HDA), volume pengambilan (m³), bobot komponen sumber daya alam (zona konservasi/rawan penurunan tanah), dan bobot peruntukan progresif.\n"
+            "(3) Tarif Pajak Air Tanah ditetapkan sebesar 20% (dua puluh persen) dari NPAT.\n"
+            "(4) Setiap Wajib Pajak PAT wajib memasang alat meter air otomatis (automatic water meter) yang terhubung dengan sistem pemantauan Bapenda DKI Jakarta."
+        ),
+        "kaidah_perumusan": (
+            "Landasan utama untuk merumuskan Peraturan Gubernur tentang Zona Bebas Air Tanah (Zero Groundwater Zone), kenaikan bobot FNA pada zona penurunan muka tanah kritis, dan insentif transisi ke jaringan perpipaan PAM Jaya."
+        ),
+        "kata_kunci": "pasal pajak air tanah pat npat hda fna tarif 20 persen sumur bor meter air zona konservasi",
+    },
+]
+
+
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -506,6 +669,48 @@ def init_tax_db() -> int:
             ),
         )
 
+    cur.execute("DROP TABLE IF EXISTS korpus_hukum_dki")
+    cur.execute(
+        """
+        CREATE TABLE korpus_hukum_dki (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kode_pasal TEXT NOT NULL,
+            tema_pajak TEXT NOT NULL,
+            jenis_instrumen TEXT NOT NULL,
+            hierarki_level INTEGER NOT NULL,
+            bab_bagian TEXT NOT NULL,
+            pasal_ayat TEXT NOT NULL,
+            tentang TEXT NOT NULL,
+            bunyi_norma TEXT NOT NULL,
+            kaidah_perumusan TEXT NOT NULL,
+            kata_kunci TEXT NOT NULL
+        )
+        """
+    )
+
+    for leg in DKI_LEGAL_CORPUS:
+        cur.execute(
+            """
+            INSERT INTO korpus_hukum_dki (
+                kode_pasal, tema_pajak, jenis_instrumen, hierarki_level,
+                bab_bagian, pasal_ayat, tentang, bunyi_norma,
+                kaidah_perumusan, kata_kunci
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                leg["kode_pasal"],
+                leg["tema_pajak"],
+                leg["jenis_instrumen"],
+                leg["hierarki_level"],
+                leg["bab_bagian"],
+                leg["pasal_ayat"],
+                leg["tentang"],
+                leg["bunyi_norma"],
+                leg["kaidah_perumusan"],
+                leg["kata_kunci"],
+            ),
+        )
+
     conn.commit()
     conn.close()
     return len(DKI_TAX_RECORDS)
@@ -532,6 +737,92 @@ def get_regulasi_chunks(tema_pajak: str = "") -> List[Dict[str, str]]:
     if tema_pajak and tema_pajak.upper() in TAX_THEMES:
         return [c for c in DKI_REGULASI_CHUNKS if c["tema_pajak"] == tema_pajak.upper()]
     return DKI_REGULASI_CHUNKS
+
+
+def get_all_legal_corpus(tema_pajak: str = "") -> List[Dict[str, Any]]:
+    """Return structured legal provisions (Pasal, Ayat, Dasar Hukum, Kaidah Perumusan) from SQLite."""
+    if not DB_PATH.exists():
+        init_tax_db()
+    conn = get_connection()
+    try:
+        if tema_pajak and tema_pajak.upper() in TAX_THEMES:
+            rows = conn.execute(
+                "SELECT * FROM korpus_hukum_dki WHERE tema_pajak = ? ORDER BY hierarki_level ASC, id ASC",
+                (tema_pajak.upper(),),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM korpus_hukum_dki ORDER BY tema_pajak ASC, hierarki_level ASC, id ASC"
+            ).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        init_tax_db()
+        return get_all_legal_corpus(tema_pajak)
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def telusuri_pasal_hukum_dki(kata_kunci: str = "", tema_pajak: str = "") -> str:
+    """Cari bunyi pasal, ayat, dasar hukum, dan kaidah perumusan regulasi pajak daerah DKI Jakarta."""
+    items = get_all_legal_corpus(tema_pajak)
+    if kata_kunci and kata_kunci.strip():
+        q_tokens = [
+            t
+            for t in kata_kunci.lower().split()
+            if len(t) >= 3 and t not in ("pasal", "ayat", "dasar", "hukum", "tentang", "pajak", "dki", "jakarta")
+        ]
+        if q_tokens:
+            matched = [
+                it
+                for it in items
+                if any(
+                    tok in (
+                        f"{it['pasal_ayat']} {it['tentang']} {it['bunyi_norma']} {it['kaidah_perumusan']} {it['kata_kunci']}"
+                    ).lower()
+                    for tok in q_tokens
+                )
+            ]
+            if matched:
+                items = matched
+    return json.dumps(items, ensure_ascii=False)
+
+
+def susun_rancangan_hukum_dki(topik_perumusan: str, tema_pajak: str = "PBB-P2") -> Dict[str, Any]:
+    """Susun kerangka perumusan dasar hukum / Legal Drafting (Menimbang, Mengingat, dan Rancangan Pasal) berbasis korpus hukum lokal DKI Jakarta."""
+    tema = tema_pajak.upper() if tema_pajak.upper() in TAX_THEMES else "PBB-P2"
+    theme_name = TAX_THEMES[tema]["name"]
+    corpus_rows = get_all_legal_corpus(tema)
+    reg_chunks = get_regulasi_chunks(tema)
+
+    dasar_mengingat = [
+        f"{r['jenis_instrumen']} — {r['pasal_ayat']} tentang {r['tentang']}"
+        for r in corpus_rows
+    ]
+    kaidah_acuan = [
+        {
+            "kode_pasal": r["kode_pasal"],
+            "pasal_ayat": r["pasal_ayat"],
+            "tentang": r["tentang"],
+            "bunyi_norma": r["bunyi_norma"],
+            "kaidah_perumusan": r["kaidah_perumusan"],
+        }
+        for r in corpus_rows
+    ]
+
+    return {
+        "tema_pajak": tema,
+        "nama_kategori": theme_name,
+        "topik_perumusan": topik_perumusan,
+        "instrumen_disarankan": f"Rancangan Peraturan Gubernur / Keputusan Kepala Bapenda Provinsi DKI Jakarta tentang {theme_name}",
+        "konsiderans_menimbang": [
+            f"a. bahwa untuk mengoptimalkan tata kelola pemungutan dan kepastian hukum pada {theme_name} di Provinsi DKI Jakarta, diperlukan pengaturan teknis yang adaptif, berkeadilan, dan akuntabel;",
+            f"b. bahwa ketentuan teknis pelaksanaan pemungutan, pemberian insentif fiskal, dan pengawasan {tema} perlu disesuaikan dengan dinamika perekonomian daerah serta kepatuhan Wajib Pajak di Provinsi DKI Jakarta;",
+            f"c. bahwa berdasarkan pertimbangan sebagaimana dimaksud dalam huruf a dan huruf b, perlu menetapkan regulasi pelaksanaan tentang {theme_name};",
+        ],
+        "dasar_hukum_mengingat": dasar_mengingat,
+        "pasal_induk_acuan": kaidah_acuan,
+        "ringkasan_tarif_dan_ketentuan": [c["content"] for c in reg_chunks],
+    }
 
 
 # --- Local Tool Functions for Ollama Tool Calling ---

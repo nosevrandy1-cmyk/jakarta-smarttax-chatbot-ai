@@ -1,47 +1,36 @@
 import hashlib
-import math
 import re
 from typing import List
-import numpy as np
 import httpx
+import numpy as np
 
 from .config import (
-    OLLAMA_LOCAL_URL,
     OLLAMA_EMBED_MODEL,
+    OLLAMA_LOCAL_URL,
     TRANSFORMERS_MODEL_NAME,
     VECTOR_DIM,
 )
 
 
-class LocalEmbedder:
-    """
-    Strictly local embedding engine for PBB-P2 RAG with Qdrant.
-    Supports:
-    1. HuggingFace `transformers` (AutoTokenizer / AutoModel when local cache/torch available,
-       plus subword token feature projection into `VECTOR_DIM` L2-normalized space).
-    2. Local Ollama `/api/embed` (`embeddinggemma`) when pulled locally.
-    Never calls external web search or external third-party inference APIs.
-    """
+class SmartTaxEmbedder:
+    """Local vector embedding service for Jakarta SmartTax Chatbot AI."""
 
     def __init__(self) -> None:
         self.dim = VECTOR_DIM
         self.engine_name = "transformers-local-multilingual"
         self._hf_tokenizer = None
-        self._init_transformers_tokenizer()
+        self._init_tokenizer()
 
-    def _init_transformers_tokenizer(self) -> None:
+    def _init_tokenizer(self) -> None:
         try:
-            import transformers  # noqa: F401
             from transformers import AutoTokenizer
 
-            # Only load from local cache if already downloaded so startup is instant & offline-safe
             self._hf_tokenizer = AutoTokenizer.from_pretrained(
                 TRANSFORMERS_MODEL_NAME,
                 local_files_only=True,
             )
             self.engine_name = f"transformers ({TRANSFORMERS_MODEL_NAME})"
         except Exception:
-            # Uses transformers package version + deterministic multilingual subword & char-ngram projection
             try:
                 import transformers
 
@@ -57,12 +46,10 @@ class LocalEmbedder:
             except Exception:
                 pass
 
-        # Multilingual + Indonesian tax domain tokenizer (preserves NOP digits, words, bigrams, and char trigrams)
         words = re.findall(r"[a-z0-9]+(?:\.[0-9]+)*", cleaned)
         tokens: List[str] = []
         for idx, w in enumerate(words):
             tokens.append(f"w:{w}")
-            # Boost exact tax domain keywords & NOP fragments
             if re.match(r"^\d{2}\.\d{2}", w) or len(w) >= 4:
                 tokens.append(f"kw:{w}")
             if idx + 1 < len(words):
@@ -101,11 +88,8 @@ class LocalEmbedder:
                     if resp.status_code == 200:
                         data = resp.json()
                         embeddings = data.get("embeddings")
-                        if embeddings and len(embeddings) == len(texts):
-                            self.engine_name = f"ollama ({OLLAMA_EMBED_MODEL})"
-                            # Adapt dimension if needed or return directly when matching
-                            if len(embeddings[0]) == self.dim:
-                                return embeddings
+                        if embeddings and len(embeddings[0]) == self.dim:
+                            return embeddings
             except Exception:
                 pass
 
@@ -115,4 +99,4 @@ class LocalEmbedder:
         return self.embed_texts([query])[0]
 
 
-embedder = LocalEmbedder()
+embedder = SmartTaxEmbedder()

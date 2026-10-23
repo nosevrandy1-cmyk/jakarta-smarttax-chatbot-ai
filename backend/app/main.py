@@ -6,11 +6,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .config import CORS_ORIGINS, DEFAULT_CHAT_MODEL, OLLAMA_LOCAL_URL
+from .config import (
+    CORS_ORIGINS,
+    DEEPSEEK_DRAFTING_MODEL,
+    DEFAULT_CHAT_MODEL,
+    OLLAMA_LOCAL_URL,
+    OLLAMA_MODEL_PROFILES,
+)
 from .embedder import embedder
-from .ollama_service import chat_with_local_pbb, stream_chat_with_local_pbb
+from .ollama_service import (
+    CAPABILITY_MODES,
+    run_smarttax_chat,
+    stream_smarttax_chat,
+)
 from .tax_db import (
     TAX_THEMES,
+    get_all_legal_corpus,
     get_all_sppt_records,
     get_regulasi_chunks,
     init_tax_db,
@@ -29,9 +40,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Bapenda DKI Jakarta Tax Service API",
-    description="Local RAG and structured SQLite lookup service for DKI Jakarta regional taxes.",
-    version="2.1.0",
+    title="Jakarta SmartTax 2026 API — Tim AI Jakarta SmartTax",
+    description="Strictly grounded local RAG, legal basis retrieval, and regulatory drafting service (Gemma & DeepSeek on Ollama).",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -64,6 +75,7 @@ class ChatRequestInput(BaseModel):
     history: List[ChatMessageInput] = Field(default_factory=list, max_length=20)
     model: Optional[str] = Field(default=DEFAULT_CHAT_MODEL, max_length=80)
     tema_pajak: Optional[str] = Field(default="PBB-P2", max_length=20)
+    mode_kapabilitas: Optional[str] = Field(default="konsultasi", max_length=32)
 
 
 @app.get("/api/health")
@@ -82,15 +94,21 @@ async def health_check() -> Dict[str, Any]:
 
     sppt_rows = get_all_sppt_records()
     reg_chunks = get_regulasi_chunks()
+    legal_rows = get_all_legal_corpus()
 
     return {
         "status": "ok",
+        "service": "Jakarta SmartTax 2026",
+        "team": "Tim AI Jakarta SmartTax 2026",
         "region": "Provinsi DKI Jakarta",
         "themes": list(TAX_THEMES.values()),
+        "capability_modes": list(CAPABILITY_MODES.values()),
         "strict_local_only": True,
         "ollama": {
             "running": ollama_running,
             "default_model": DEFAULT_CHAT_MODEL,
+            "drafting_model": DEEPSEEK_DRAFTING_MODEL,
+            "profiles": OLLAMA_MODEL_PROFILES,
             "installed_local_models": local_models,
         },
         "qdrant": {
@@ -98,12 +116,31 @@ async def health_check() -> Dict[str, Any]:
             "collection": vector_store.collection_name,
             "records_indexed": len(sppt_rows),
             "regulasi_chunks": len(reg_chunks),
+            "pasal_hukum_indexed": len(legal_rows),
         },
         "embedder": {
             "engine": embedder.engine_name,
             "dimension": embedder.dim,
         },
     }
+
+
+@app.get("/api/korpus-hukum")
+async def get_korpus_hukum_endpoint(tema_pajak: Optional[str] = None) -> Dict[str, Any]:
+    tema = (tema_pajak or "").upper()
+    rows = get_all_legal_corpus(tema if tema in TAX_THEMES else "")
+    return {
+        "tema_pajak": tema or "SEMUA",
+        "total": len(rows),
+        "items": rows,
+    }
+
+
+@app.post("/api/reindex")
+async def reindex_endpoint() -> Dict[str, Any]:
+    init_tax_db()
+    stats = vector_store.reindex_all()
+    return {"status": "reindexed", **stats}
 
 
 @app.post("/api/chat")
@@ -114,12 +151,14 @@ async def chat_endpoint(req: ChatRequestInput) -> Dict[str, Any]:
     tema = (req.tema_pajak or "PBB-P2").upper()
     if tema not in TAX_THEMES:
         tema = "PBB-P2"
+    mode_kap = (req.mode_kapabilitas or "konsultasi").lower()
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
-    return await chat_with_local_pbb(
+    return await run_smarttax_chat(
         user_message=clean_msg,
         history=history_dicts,
         model=req.model or DEFAULT_CHAT_MODEL,
         tema_pajak=tema,
+        mode_kapabilitas=mode_kap,
     )
 
 
@@ -131,13 +170,15 @@ async def chat_stream_endpoint(req: ChatRequestInput) -> StreamingResponse:
     tema = (req.tema_pajak or "PBB-P2").upper()
     if tema not in TAX_THEMES:
         tema = "PBB-P2"
+    mode_kap = (req.mode_kapabilitas or "konsultasi").lower()
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
     return StreamingResponse(
-        stream_chat_with_local_pbb(
+        stream_smarttax_chat(
             user_message=clean_msg,
             history=history_dicts,
             model=req.model or DEFAULT_CHAT_MODEL,
             tema_pajak=tema,
+            mode_kapabilitas=mode_kap,
         ),
         media_type="application/x-ndjson",
         headers={

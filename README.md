@@ -8,34 +8,39 @@ Repositori resmi **Tim AI Jakarta SmartTax 2026**. Proyek ini adalah platform *c
 - **REKLAME** (Pajak Reklame — Videotron, Megatron, Billboard Kawasan Protokol & Kendali Ketat)
 - **PAT** (Pajak Air Tanah — Sumur Bor Industri & Komersial)
 
-Seluruh pemrosesan data berjalan **100% lokal (On-Premise)** tanpa mengirim data Wajib Pajak ke layanan pihak ketiga.
+Platform ini mendukung 3 kapabilitas utama:
+1. **Konsultasi Tarif, Rumus & Data Pajak** (Simulasi perhitungan, pengecekan NOP/NPWPD, tunggakan, dan rekap wilayah)
+2. **Telusur Pasal & Dasar Hukum** (Pencarian bunyi pasal, ayat, dan kaidah regulasi pajak daerah)
+3. **Perumusan Dasar Hukum Baru (*Legal Drafting*)** (Penyusunan draf Konsiderans *Menimbang*, Dasar *Mengingat*, dan Batang Tubuh *Rancangan Pasal & Ayat*)
+
+Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** dan **DeepSeek** di atas **Ollama**, sehingga jawaban terkunci pada data dan korpus hukum resmi yang disediakan tanpa halusinasi.
 
 ---
 
 ## Ringkasan Tech Stack (Frontend, Backend, Data & AI)
 
-Supaya tim bisa langsung paham komponen apa saja yang jalan di balik layar, berikut daftar teknologi yang kita pakai:
-
 ### 1. Frontend (`frontend/`)
-- **Framework:** **Next.js 15** (*App Router*) + **React 19** + **TypeScript 5**.
-- **Styling & UI:** **Native CSS Custom Properties** (`src/app/globals.css`) tanpa ketergantungan *library* komponen berat. Mendukung tema *Light/Dark*, tabel angka *tabular-nums*, dan *off-canvas drawer* responsif untuk layar HP (*mobile*).
-- **Streaming Client:** Menggunakan **Web `ReadableStream` API + `TextDecoder`** bawaan *browser* untuk membaca aliran token **NDJSON** (*Newline-Delimited JSON*) secara *real-time* dari backend (mirip cara kerja UI ChatGPT).
-- **State & Riwayat Sesi:** Disimpan di `localStorage` *browser* (`bapenda-dki-sessions-v2`) dan otomatis dikelompokkan berdasarkan kategori pajak (`PBB-P2`, `PBJT`, `BPHTB`, `REKLAME`, `PAT`).
+- **Framework:** **Next.js 15** (*App Router*) + **React 19** + **TypeScript 5** (`jakarta-smarttax-chatbot-ai-frontend`).
+- **Arsitektur Konfigurasi Modular (`src/config/smarttaxConfig.ts`):** Seluruh daftar tema pajak, mode kapabilitas (`konsultasi`, `pasal_hukum`, `perumusan_hukum`), dan *starter prompts* dipisahkan ke satu file konfigurasi agar tim mudah menambah fitur atau kategori baru.
+- **Styling & Mobile UX (`src/app/globals.css`):** Menggunakan **Native CSS Custom Properties** dengan dukungan *off-canvas drawer* responsif di layar HP, *tabular-nums* untuk tabel rupiah, dan transisi halus antar-tema.
+- **Streaming Client:** Membaca aliran **NDJSON** (*Newline-Delimited JSON*) secara *real-time* menggunakan Web `ReadableStream` + `TextDecoder`.
 
 ### 2. Backend (`backend/`)
-- **Framework API:** **FastAPI** (Python 3.11+) yang dijalankan di atas server ASGI **Uvicorn**.
-- **Package & Venv Manager:** Menggunakan **`uv`** agar instalasi *dependency* dan sinkronisasi `pyproject.toml` jauh lebih cepat dibanding `pip` biasa.
-- **Validasi & Keamanan:** **Pydantic v2** untuk membatasi panjang *payload* (`message` maks 2.000 karakter, `history` maks 20 giliran) ditambah *middleware* HTTP Security Headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) dan pengaturan CORS ketat.
-- **Async HTTP Client:** **`httpx.AsyncClient`** untuk membuka koneksi *streaming* asinkron ke server LLM lokal.
+- **Framework API:** **FastAPI** (Python 3.11+) di atas server ASGI **Uvicorn** (`jakarta-smarttax-chatbot-ai-backend`).
+- **Manajemen Paket:** Dikelola menggunakan **`uv`** (`pyproject.toml` & `uv.lock`).
+- **Validasi & Keamanan:** Validasi *payload* menggunakan **Pydantic v2** ditambah *middleware* HTTP Security Headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) serta pembatasan `CORS_ORIGINS`.
 
-### 3. Database Relasional & Vector Engine (`backend/data/`)
-- **Database Transaksional:** **SQLite 3** (`backend/data/pbb_p2_lokal.db`) untuk menyimpan data objek pajak, NOP/NPWPD, rincian ketetapan pokok, denda keterlambatan, status pembayaran, dan aturan tarif tiap pajak.
-- **Vector Database (RAG):** **Qdrant** (`qdrant-client`) dalam mode penyimpanan disk lokal (`backend/data/qdrant_storage/`). Setiap dokumen diindeks dengan filter *payload* `tema_pajak` supaya pencarian satu jenis pajak tidak tercampur dengan pajak lain.
-- **Embedding Engine:** **HuggingFace `transformers` + `PyTorch`** (`sentence-transformers/all-MiniLM-L6-v2`, dimensi 384) dengan *fallback* otomatis ke *deterministic subword hashing* 384-dimensi jika server berjalan tanpa koneksi internet sama sekali (*air-gapped*).
+### 3. Database & Vector Engine (`backend/data/`)
+- **Database Relasional (SQLite 3 — `pajak_dki.sqlite`):**
+  - Tabel `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai DPP/NJOP, pokok pajak, denda, dan status pembayaran.
+  - Tabel `korpus_hukum_dki`: Menyimpan struktur pasal, ayat, bab/bagian, bunyi norma hukum, dan kaidah perumusan (*legal drafting*) untuk tiap kategori pajak.
+- **Vector Database (Qdrant — `jakarta_smarttax_kb`):** Menyimpan indeks vektor berdimensi `384` untuk pencarian semantik yang difilter ketat berdasarkan `tema_pajak` dan `doc_type` (`objek_pajak`, `regulasi`, `pasal_hukum`).
+- **Embedding Engine (`backend/app/embedder.py`):** Mendukung model lokal (`bge-m3` / HuggingFace `transformers`) dengan *fallback* deterministik 384-dimensi untuk lingkungan *offline*.
 
-### 4. AI / LLM Runtime
-- **LLM Engine Lokal:** **Ollama** (berjalan di `http://localhost:11434`, mendukung model seperti `qwen2.5:7b-instruct` atau `llama3.1:8b`).
-- **Deterministic SQL Fallback:** Jika *service* Ollama di mesin lokal belum dinyalakan, backend **tidak akan error**—sistem otomatis menyusun jawaban dan tabel Markdown langsung dari hasil *query* SQLite & Qdrant.
+### 4. AI / LLM Runtime (Ollama — Gemma & DeepSeek)
+- **Gemma (`gemma2:9b`):** Digunakan sebagai mesin utama untuk RAG cepat pada konsultasi tarif, rumus perhitungan, dan pengecekan data objek pajak.
+- **DeepSeek (`deepseek-r1:8b`):** Digunakan untuk penalaran mendalam saat menelusuri keterkaitan pasal/ayat dan menyusun draf perumusan dasar hukum baru (*legal drafting*). Mendukung pembagian beban paralel 2 PC di jaringan LAN (`OLLAMA_HOST` & `OLLAMA_SECONDARY_HOST`).
+- **Deterministic Grounded Fallback:** Jika layanan Ollama di mesin lokal belum aktif, backend otomatis menyajikan tabel data, bunyi pasal, dan kerangka *legal drafting* langsung dari SQLite & Qdrant.
 
 ---
 
@@ -45,21 +50,22 @@ Supaya tim bisa langsung paham komponen apa saja yang jalan di balik layar, beri
 .
 ├── backend/
 │   ├── app/
-│   │   ├── config.py           # Konfigurasi env, port, CORS, dan nama koleksi Qdrant
-│   │   ├── main.py             # Entrypoint FastAPI, endpoint REST + NDJSON streaming
-│   │   ├── ollama_service.py   # Orkestrator RAG, deteksi pindah tema, dan streaming LLM
-│   │   ├── tax_db.py           # Skema SQLite, query agregasi/tunggakan, dan seed data DKI
-│   │   ├── vector_store.py     # Wrapper Qdrant lokal & filter payload per kategori pajak
-│   │   └── embedder.py         # Pembangkit vektor 384-dimensi (Transformers / Subword)
-│   ├── data/                   # Lokasi file .db SQLite & storage Qdrant (di-ignore Git)
-│   └── pyproject.toml          # Daftar dependency Python (dikelola via uv)
+│   │   ├── config.py           # Konfigurasi host Ollama (Gemma & DeepSeek), Qdrant, & CORS
+│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, reindex, & korpus-hukum
+│   │   ├── ollama_service.py   # Router kapabilitas (Tarif, Pasal, Perumusan) & streaming LLM
+│   │   ├── tax_db.py           # Skema SQLite (pajak_dki_jakarta & korpus_hukum_dki)
+│   │   ├── vector_store.py     # Qdrant client & filter payload (tema_pajak + doc_type)
+│   │   └── embedder.py         # Pembangkit vektor 384-dimensi lokal
+│   └── pyproject.toml          # Konfigurasi paket jakarta-smarttax-chatbot-ai-backend
 ├── frontend/
-│   ├── src/app/
-│   │   ├── layout.tsx          # Root HTML, konfigurasi font Inter, dan metadata viewport mobile
-│   │   ├── page.tsx            # Komponen utama chat, dropdown kategori pajak, & parser NDJSON
-│   │   └── globals.css         # Seluruh desain UI, variabel warna, dan media query mobile
-│   ├── next.config.mjs         # Konfigurasi Next.js & security headers
-│   └── package.json
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── smarttaxConfig.ts # Konfigurasi modular tema pajak, mode kapabilitas & prompt
+│   │   └── app/
+│   │       ├── layout.tsx      # Root layout, font Inter, & konfigurasi viewport mobile
+│   │       ├── page.tsx        # Komponen utama chat, pemilih mode, & pembaca stream NDJSON
+│   │       └── globals.css     # Variabel desain, layout desktop, & drawer responsif mobile
+│   └── package.json            # Konfigurasi paket jakarta-smarttax-chatbot-ai-frontend
 └── docs/
     └── ENGINEERING_GUIDE.md    # Panduan teknis lengkap untuk Tim AI Jakarta SmartTax 2026
 ```
@@ -68,9 +74,7 @@ Supaya tim bisa langsung paham komponen apa saja yang jalan di balik layar, beri
 
 ## Cara Menjalankan di Mesin Lokal
 
-### 1. Jalankan Backend (FastAPI — Port `8000`)
-
-Pastikan Python 3.11+ dan [`uv`](https://docs.astral.sh/uv/) sudah terpasang:
+### 1. Menjalankan Backend (Port `8000`)
 
 ```bash
 cd backend
@@ -79,11 +83,7 @@ uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Saat pertama kali menyala, backend otomatis membuat database SQLite di `backend/data/pbb_p2_lokal.db` dan membangun indeks vektor Qdrant di `backend/data/qdrant_storage/`.
-
-### 2. Jalankan Frontend (Next.js — Port `3000`)
-
-Buka terminal baru:
+### 2. Menjalankan Frontend (Port `3000`)
 
 ```bash
 cd frontend
@@ -96,8 +96,8 @@ Buka `http://localhost:3000` di *browser*.
 
 ---
 
-## Dokumentasi Tim Engineering
+## Panduan Teknis Tim Engineering
 
-Untuk penjelasan mendalam mengenai alur kerja sistem, arsitektur *backend/frontend*, dan panduan bagian kode mana yang harus diedit oleh tim, silakan baca:
+Penjelasan lengkap mengenai arsitektur kode, cara kerja *dual-model* **Gemma & DeepSeek**, serta panduan file mana yang harus diedit saat mengembangkan fitur baru tersedia di:
 
 👉 **[Panduan Engineering Tim AI Jakarta SmartTax 2026 (`docs/ENGINEERING_GUIDE.md`)](docs/ENGINEERING_GUIDE.md)**

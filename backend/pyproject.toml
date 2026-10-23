@@ -1,7 +1,7 @@
 [project]
-name = "pbb-p2-ai-backend"
-version = "0.1.0"
-description = "FastAPI + Qdrant + Transformers + Ollama backend for local PBB-P2 tax data AI chat (zero external sources)"
+name = "jakarta-smarttax-chatbot-ai-backend"
+version = "1.0.0"
+description = "Jakarta SmartTax Chatbot AI Backend — FastAPI, SQLite, Qdrant Vector DB, and Multi-Node Ollama (Gemma 2 & DeepSeek)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

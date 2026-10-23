@@ -1,6 +1,6 @@
 {
-  "name": "pbb-p2-ai-frontend",
-  "version": "0.1.0",
+  "name": "jakarta-smarttax-chatbot-ai-frontend",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
