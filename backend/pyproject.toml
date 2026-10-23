@@ -1,0 +1,17 @@
+[project]
+name = "pbb-p2-ai-backend"
+version = "0.1.0"
+description = "FastAPI + Qdrant + Transformers + Ollama backend for local PBB-P2 tax data AI chat (zero external sources)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "ollama>=0.4.7",
+    "qdrant-client>=1.12.0",
+    "transformers>=4.44.0",
+    "numpy>=1.26.0",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.9.0",
+]

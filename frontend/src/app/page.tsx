@@ -1,0 +1,2226 @@
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const STORAGE_KEY = "bapenda_dki_chat_sessions_v2";
+
+export type TaxThemeCode = "PBB-P2" | "PBJT" | "BPHTB" | "REKLAME" | "PAT";
+
+interface TaxThemeConfig {
+  code: TaxThemeCode;
+  shortLabel: string;
+  label: string;
+  desc: string;
+  iconColor: string;
+  greeting: string;
+  subtitle: string;
+  placeholder: string;
+  suggestions: { title: string; subtitle: string; prompt: string }[];
+}
+
+function ThemeIcon({
+  code,
+  color = "currentColor",
+}: {
+  code: TaxThemeCode;
+  color?: string;
+}) {
+  switch (code) {
+    case "PBB-P2":
+      return (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 21h18" />
+          <path d="M5 21V7l8-4v18" />
+          <path d="M19 21V11l-6-4" />
+          <path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01" />
+        </svg>
+      );
+    case "PBJT":
+      return (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
+          <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
+          <line x1="6" y1="2" x2="6" y2="4" />
+          <line x1="10" y1="2" x2="10" y2="4" />
+          <line x1="14" y1="2" x2="14" y2="4" />
+        </svg>
+      );
+    case "BPHTB":
+      return (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="9" y1="13" x2="15" y2="13" />
+          <line x1="9" y1="17" x2="13" y2="17" />
+        </svg>
+      );
+    case "REKLAME":
+      return (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="4" width="18" height="11" rx="2" />
+          <path d="M8 15v5M16 15v5M5 20h14" />
+        </svg>
+      );
+    case "PAT":
+      return (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+        </svg>
+      );
+  }
+}
+
+const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
+  "PBB-P2": {
+    code: "PBB-P2",
+    shortLabel: "PBB-P2",
+    label: "PBB-P2 (Bumi & Bangunan)",
+    desc: "SPPT, NOP, NJOP, Insentif & Tunggakan DKI Jakarta",
+    iconColor: "#60a5fa",
+    greeting: "Mau cek objek atau ketetapan PBB-P2 mana hari ini?",
+    subtitle: "Telusuri NOP, status pembayaran SPPT, atau rincian tagihan wilayah DKI Jakarta.",
+    placeholder: "Ketik NOP, nama gedung, atau tanya informasi PBB-P2...",
+    suggestions: [
+      {
+        title: "Cek Tunggakan PBB-P2 DKI",
+        subtitle: "Daftar objek yang belum lunas beserta akumulasi denda",
+        prompt: "Tampilkan daftar tunggakan PBB-P2 di DKI Jakarta beserta rincian dendanya",
+      },
+      {
+        title: "Rekapitulasi Wilayah DKI Jakarta",
+        subtitle: "Target & realisasi PBB-P2 per Kota Administrasi",
+        prompt: "Rekapitulasi ketetapan dan realisasi PBB-P2 DKI Jakarta per wilayah",
+      },
+      {
+        title: "Lacak NOP Gedung SCBD",
+        subtitle: "Rincian ketetapan NOP 31.74.010.003.008-0042.0",
+        prompt: "Cek detail SPPT NOP 31.74.010.003.008-0042.0 di Jakarta Selatan",
+      },
+      {
+        title: "Tarif & Kriteria Bebas 100%",
+        subtitle: "Informasi tarif, NJOPTKP, dan pembebasan hunian DKI",
+        prompt: "Berapa tarif PBB-P2, NJOPTKP Rp 60 juta, dan syarat pembebasan 100% di DKI Jakarta?",
+      },
+    ],
+  },
+  PBJT: {
+    code: "PBJT",
+    shortLabel: "PBJT",
+    label: "PBJT (Restoran, Hotel, Parkir, Hiburan)",
+    desc: "Makanan & Minuman, Perhotelan, Parkir, Hiburan & Listrik",
+    iconColor: "#f59e0b",
+    greeting: "Cek pajak restoran, hotel, parkir, atau hiburan di DKI?",
+    subtitle: "Lacak NPWPD, ketetapan e-SPTPD masa pajak, dan rincian objek PBJT.",
+    placeholder: "Ketik NPWPD, nama restoran/hotel, atau tanya tarif PBJT...",
+    suggestions: [
+      {
+        title: "Tunggakan e-SPTPD PBJT",
+        subtitle: "Wajib Pajak Restoran & Hiburan yang belum lunas",
+        prompt: "Tampilkan daftar tunggakan PBJT di DKI Jakarta beserta dendanya",
+      },
+      {
+        title: "Rincian Tarif PBJT DKI",
+        subtitle: "Restoran 10%, Hotel 10%, Parkir 10%, Hiburan 40%",
+        prompt: "Jelaskan rincian tarif PBJT Makanan/Minuman, Hotel, Parkir, dan Hiburan di DKI Jakarta",
+      },
+      {
+        title: "Daftar Objek PBJT Senopati & PIK",
+        subtitle: "Data NPWPD Restoran, Hotel Thamrin & Karaoke PIK",
+        prompt: "Tampilkan seluruh data Wajib Pajak PBJT di DKI Jakarta",
+      },
+      {
+        title: "Rekapitulasi PBJT per Wilayah",
+        subtitle: "Realisasi PBJT Jakarta Selatan, Pusat, Utara & Timur",
+        prompt: "Rekapitulasi ketetapan dan realisasi PBJT DKI Jakarta per wilayah",
+      },
+    ],
+  },
+  BPHTB: {
+    code: "BPHTB",
+    shortLabel: "BPHTB",
+    label: "BPHTB (Perolehan Hak Tanah/Bangunan)",
+    desc: "SSPD Jual Beli (AJB), Waris/Hibah & NPOPTKP DKI Jakarta",
+    iconColor: "#a78bfa",
+    greeting: "Butuh rincian BPHTB jual beli atau waris di Jakarta?",
+    subtitle: "Periksa status validasi SSPD BPHTB, potongan NPOPTKP, dan simulasi tarif 5%.",
+    placeholder: "Ketik nomor SSPD, lokasi AJB, atau tanya rumus NPOPTKP...",
+    suggestions: [
+      {
+        title: "Daftar SSPD BPHTB DKI",
+        subtitle: "Transaksi Jual Beli (Cilandak) & Waris (Cempaka Putih)",
+        prompt: "Tampilkan seluruh data SSPD BPHTB di DKI Jakarta",
+      },
+      {
+        title: "NPOPTKP Jual Beli vs Waris",
+        subtitle: "Umum Rp 80 Juta & Waris/Hibah Rp 350 Juta (Tarif 5%)",
+        prompt: "Berapa tarif BPHTB dan besaran NPOPTKP Jual Beli serta Waris di DKI Jakarta?",
+      },
+      {
+        title: "SSPD Belum Tervalidasi",
+        subtitle: "Cek berkas BPHTB yang masih berstatus belum lunas",
+        prompt: "Tampilkan daftar tunggakan BPHTB yang belum lunas di DKI Jakarta",
+      },
+      {
+        title: "Rekapitulasi Penerimaan BPHTB",
+        subtitle: "Ringkasan ketetapan & realisasi BPHTB per wilayah",
+        prompt: "Rekapitulasi ketetapan dan realisasi BPHTB di DKI Jakarta",
+      },
+    ],
+  },
+  REKLAME: {
+    code: "REKLAME",
+    shortLabel: "Reklame",
+    label: "Pajak Reklame",
+    desc: "SKPD Videotron LED, Billboard, NSR & Kawasan Kendali Ketat",
+    iconColor: "#f472b6",
+    greeting: "Cek SKPD reklame, videotron, atau tarif kawasan DKI?",
+    subtitle: "Telusuri Nilai Sewa Reklame (NSR), titik tayang, dan status SKPD.",
+    placeholder: "Ketik nomor SKPD Reklame, lokasi titik tayang, atau tanya NSR...",
+    suggestions: [
+      {
+        title: "Daftar Titik Reklame & Videotron",
+        subtitle: "Videotron LED Bundaran HI & Billboard Kemang Raya",
+        prompt: "Tampilkan seluruh data objek Pajak Reklame di DKI Jakarta",
+      },
+      {
+        title: "SKPD Reklame Belum Lunas",
+        subtitle: "Cek tunggakan Pajak Reklame beserta denda",
+        prompt: "Tampilkan daftar tunggakan Pajak Reklame di DKI Jakarta",
+      },
+      {
+        title: "Tarif 25% & Kawasan Protokol",
+        subtitle: "Ketentuan koridor protokol Sudirman–Thamrin–Kuningan",
+        prompt: "Bagaimana aturan tarif Pajak Reklame 25% dan Kawasan Kendali Ketat di DKI Jakarta?",
+      },
+      {
+        title: "Rekapitulasi Pajak Reklame",
+        subtitle: "Target & realisasi Pajak Reklame per wilayah",
+        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Reklame DKI Jakarta",
+      },
+    ],
+  },
+  PAT: {
+    code: "PAT",
+    shortLabel: "Air Tanah",
+    label: "Pajak Air Tanah (PAT)",
+    desc: "SKPD Air Tanah, Volume m³, NPAT & Tarif 20% DKI Jakarta",
+    iconColor: "#38bdf8",
+    greeting: "Cek ketetapan atau volume Pajak Air Tanah DKI?",
+    subtitle: "Pantau SKPD sumur bor industri, perhitungan NPAT, dan status pembayaran.",
+    placeholder: "Ketik nomor SKPD PAT, nama industri, atau tanya rumus NPAT...",
+    suggestions: [
+      {
+        title: "Data Wajib Pajak Air Tanah",
+        subtitle: "Kawasan Industri Pulo Gadung & Gedung Komersial Kuningan",
+        prompt: "Tampilkan seluruh data Wajib Pajak Air Tanah (PAT) di DKI Jakarta",
+      },
+      {
+        title: "Tunggakan SKPD Air Tanah",
+        subtitle: "Daftar objek PAT yang belum lunas beserta denda",
+        prompt: "Tampilkan daftar tunggakan Pajak Air Tanah di DKI Jakarta",
+      },
+      {
+        title: "Perhitungan NPAT & Tarif 20%",
+        subtitle: "Komponen Harga Dasar Air & Faktor Nilai Air DKI",
+        prompt: "Jelaskan ketentuan tarif 20% dan dasar pengenaan NPAT Pajak Air Tanah di DKI Jakarta",
+      },
+      {
+        title: "Rekapitulasi PAT per Wilayah",
+        subtitle: "Ringkasan ketetapan & realisasi PAT DKI Jakarta",
+        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Air Tanah di DKI Jakarta",
+      },
+    ],
+  },
+};
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  thinking?: string;
+  statusText?: string;
+  isStreaming?: boolean;
+  modelUsed?: string;
+  durationMs?: number;
+  suggestedTheme?: TaxThemeCode;
+  followUps?: string[];
+  originalQuestion?: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  theme: TaxThemeCode;
+  updatedAt: number;
+  messages: ChatMessage[];
+}
+
+function renderInline(
+  text: string,
+  onCopyCode?: (codeText: string) => void
+): React.ReactNode[] {
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return (
+        <strong key={i} style={{ color: "#ffffff", fontWeight: 600 }}>
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      const cleanCode = part.slice(1, -1);
+      return (
+        <code
+          key={i}
+          className="copyable-code"
+          title="Klik untuk menyalin nomor/kode ini"
+          onClick={() => onCopyCode?.(cleanCode)}
+        >
+          {cleanCode}
+        </code>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+function FormattedMarkdown({
+  content,
+  isStreaming,
+  onCopyCode,
+}: {
+  content: string;
+  isStreaming?: boolean;
+  onCopyCode?: (codeText: string) => void;
+}) {
+  if (!content && isStreaming) {
+    return <span className="streaming-dot" />;
+  }
+
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (
+      line.trim().startsWith("|") &&
+      i + 1 < lines.length &&
+      lines[i + 1].trim().startsWith("|") &&
+      lines[i + 1].includes("---")
+    ) {
+      const headers = line
+        .trim()
+        .replace(/^\||\|$/g, "")
+        .split("|")
+        .map((h) => h.trim());
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        const cells = lines[i]
+          .trim()
+          .replace(/^\||\|$/g, "")
+          .split("|")
+          .map((c) => c.trim());
+        rows.push(cells);
+        i++;
+      }
+      elements.push(
+        <div key={`tbl-${i}`} className="gpt-table-wrap">
+          <table className="gpt-table">
+            <thead>
+              <tr>
+                {headers.map((h, idx) => (
+                  <th key={idx}>{renderInline(h, onCopyCode)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, rIdx) => (
+                <tr key={rIdx}>
+                  {r.map((c, cIdx) => (
+                    <td key={cIdx}>{renderInline(c, onCopyCode)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      continue;
+    }
+
+    if (line.startsWith("### ")) {
+      elements.push(<h3 key={i}>{renderInline(line.slice(4), onCopyCode)}</h3>);
+      i++;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      elements.push(<h3 key={i}>{renderInline(line.slice(3), onCopyCode)}</h3>);
+      i++;
+      continue;
+    }
+
+    if (line.startsWith("> ")) {
+      elements.push(
+        <blockquote key={i}>{renderInline(line.slice(2), onCopyCode)}</blockquote>
+      );
+      i++;
+      continue;
+    }
+
+    if (line.trim() === "---") {
+      elements.push(
+        <hr
+          key={i}
+          style={{
+            border: "none",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
+            margin: "14px 0",
+          }}
+        />
+      );
+      i++;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const listItems: React.ReactNode[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*[-*]\s+/, "");
+        const isSub = /^\s{2,}[-*]\s+/.test(lines[i]);
+        listItems.push(
+          <li
+            key={i}
+            style={{
+              marginLeft: isSub ? "18px" : "0px",
+              listStyleType: isSub ? "circle" : "disc",
+            }}
+          >
+            {renderInline(itemText, onCopyCode)}
+          </li>
+        );
+        i++;
+      }
+      elements.push(<ul key={`ul-${i}`}>{listItems}</ul>);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const listItems: React.ReactNode[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*\d+\.\s+/, "");
+        listItems.push(<li key={i}>{renderInline(itemText, onCopyCode)}</li>);
+        i++;
+      }
+      elements.push(<ol key={`ol-${i}`}>{listItems}</ol>);
+      continue;
+    }
+
+    if (!line.trim()) {
+      i++;
+      continue;
+    }
+
+    elements.push(
+      <p key={i}>
+        {renderInline(line, onCopyCode)}
+        {isStreaming && i === lines.length - 1 && (
+          <span className="streaming-dot" />
+        )}
+      </p>
+    );
+    i++;
+  }
+
+  return <div className="gpt-markdown">{elements}</div>;
+}
+
+export default function TaxAssistantView() {
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [selectedModel, setSelectedModel] = useState<string>("gemma4:cloud");
+  const [modelMenuOpen, setModelMenuOpen] = useState<boolean>(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState<boolean>(false);
+  const [cmdOpen, setCmdOpen] = useState<boolean>(false);
+  const [cmdQuery, setCmdQuery] = useState<string>("");
+
+  const [sessions, setSessions] = useState<ChatSession[]>([
+    {
+      id: "default-session",
+      title: "Percakapan Baru",
+      theme: "PBB-P2",
+      updatedAt: Date.now(),
+      messages: [],
+    },
+  ]);
+  const [activeSessionId, setActiveSessionId] =
+    useState<string>("default-session");
+  const [hydrated, setHydrated] = useState<boolean>(false);
+
+  const [input, setInput] = useState<string>("");
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [copiedId, setCopiedId] = useState<string>("");
+
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+
+  const [toast, setToast] = useState<{
+    message: string;
+    undoSession?: ChatSession;
+  } | null>(null);
+
+  const [showScrollBottom, setShowScrollBottom] = useState<boolean>(false);
+  const userScrolledUpRef = useRef<boolean>(false);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const themeDropdownRef = useRef<HTMLDivElement | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const activeSession =
+    sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const currentTheme: TaxThemeCode = activeSession.theme || "PBB-P2";
+  const themeConfig = DKI_TAX_THEMES[currentTheme];
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
+          setSessions(parsed.sessions);
+          if (parsed.activeSessionId) {
+            setActiveSessionId(parsed.activeSessionId);
+          }
+        }
+      }
+    } catch {
+      // Ignore storage access errors
+    } finally {
+      setHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ sessions, activeSessionId })
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }, [sessions, activeSessionId, hydrated]);
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current) {
+      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeSession.messages]);
+
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+        setCmdQuery("");
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+      } else if (e.key === "Escape") {
+        if (cmdOpen) setCmdOpen(false);
+        else if (themeMenuOpen) setThemeMenuOpen(false);
+        else if (modelMenuOpen) setModelMenuOpen(false);
+        else if (editingMsgId) setEditingMsgId(null);
+        else if (isGenerating) stopGeneration();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cmdOpen, themeMenuOpen, modelMenuOpen, editingMsgId, isGenerating]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        modelDropdownRef.current &&
+        !modelDropdownRef.current.contains(e.target as Node)
+      ) {
+        setModelMenuOpen(false);
+      }
+      if (
+        themeDropdownRef.current &&
+        !themeDropdownRef.current.contains(e.target as Node)
+      ) {
+        setThemeMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function closeSidebarOnMobile() {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }
+
+  function showToastMessage(msg: string, undoSession?: ChatSession) {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ message: msg, undoSession });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+    }, 4000);
+  }
+
+  function handleScrollArea() {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isUp = distanceFromBottom > 120;
+    userScrolledUpRef.current = isUp;
+    setShowScrollBottom(isUp);
+  }
+
+  function scrollToBottomNow() {
+    userScrolledUpRef.current = false;
+    setShowScrollBottom(false);
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function switchTheme(newTheme: TaxThemeCode) {
+    setThemeMenuOpen(false);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId ? { ...s, theme: newTheme } : s
+      )
+    );
+    setTimeout(() => textareaRef.current?.focus(), 40);
+  }
+
+  function createNewChat(themeOverride?: TaxThemeCode) {
+    if (isGenerating) stopGeneration();
+    const targetTheme = themeOverride || currentTheme;
+    const newId = `session-${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newId,
+      title: "Percakapan Baru",
+      theme: targetTheme,
+      updatedAt: Date.now(),
+      messages: [],
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setInput("");
+    closeSidebarOnMobile();
+    setTimeout(() => textareaRef.current?.focus(), 60);
+  }
+
+  function deleteSession(id: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    const target = sessions.find((s) => s.id === id);
+    setSessions((prev) => {
+      const filtered = prev.filter((s) => s.id !== id);
+      if (filtered.length === 0) {
+        const fallback: ChatSession = {
+          id: `session-${Date.now()}`,
+          title: "Percakapan Baru",
+          theme: currentTheme,
+          updatedAt: Date.now(),
+          messages: [],
+        };
+        setActiveSessionId(fallback.id);
+        return [fallback];
+      }
+      if (activeSessionId === id) {
+        setActiveSessionId(filtered[0].id);
+      }
+      return filtered;
+    });
+    if (target) {
+      showToastMessage("Percakapan dihapus", target);
+    }
+  }
+
+  function undoDeleteSession() {
+    if (!toast?.undoSession) return;
+    const restored = toast.undoSession;
+    setSessions((prev) => [restored, ...prev]);
+    setActiveSessionId(restored.id);
+    setToast(null);
+  }
+
+  function stopGeneration() {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? {
+              ...s,
+              messages: s.messages.map((m) =>
+                m.isStreaming
+                  ? { ...m, isStreaming: false, statusText: undefined }
+                  : m
+              ),
+            }
+          : s
+      )
+    );
+  }
+
+  async function sendPrompt(
+    promptText?: string,
+    themeOverride?: TaxThemeCode
+  ) {
+    const query = (promptText ?? input).trim();
+    if (!query || isGenerating) return;
+
+    const effectiveTheme = themeOverride || currentTheme;
+    userScrolledUpRef.current = false;
+    setShowScrollBottom(false);
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: query,
+    };
+    const assistantMsgId = `assistant-${Date.now() + 1}`;
+    const placeholderAssistant: ChatMessage = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      statusText: `Menelusuri arsip ${effectiveTheme} Bapenda DKI Jakarta...`,
+      isStreaming: true,
+      originalQuestion: query,
+    };
+
+    const historyForApi = activeSession.messages
+      .slice(-6)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    setSessions((prev) =>
+      prev.map((s) => {
+        if (s.id !== activeSessionId) return s;
+        const isFirst = s.messages.length === 0;
+        return {
+          ...s,
+          theme: effectiveTheme,
+          title: isFirst ? query.slice(0, 34) : s.title,
+          updatedAt: Date.now(),
+          messages: [...s.messages, userMsg, placeholderAssistant],
+        };
+      })
+    );
+
+    if (!promptText) {
+      setInput("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    }
+
+    setIsGenerating(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    try {
+      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: query,
+          model: selectedModel,
+          tema_pajak: effectiveTheme,
+          history: historyForApi,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const rawLine of lines) {
+          if (!rawLine.trim()) continue;
+          let evt: any;
+          try {
+            evt = JSON.parse(rawLine);
+          } catch {
+            continue;
+          }
+
+          setSessions((prev) =>
+            prev.map((s) => {
+              if (s.id !== activeSessionId) return s;
+              return {
+                ...s,
+                messages: s.messages.map((m) => {
+                  if (m.id !== assistantMsgId) return m;
+                  if (evt.type === "status") {
+                    return { ...m, statusText: evt.text };
+                  }
+                  if (evt.type === "sources" && evt.suggested_theme) {
+                    return {
+                      ...m,
+                      suggestedTheme: evt.suggested_theme as TaxThemeCode,
+                    };
+                  }
+                  if (evt.type === "thinking") {
+                    return {
+                      ...m,
+                      statusText: `Menyusun rincian ${effectiveTheme}...`,
+                      thinking: (m.thinking || "") + (evt.delta || ""),
+                    };
+                  }
+                  if (evt.type === "token") {
+                    return {
+                      ...m,
+                      statusText: undefined,
+                      content: m.content + (evt.delta || ""),
+                    };
+                  }
+                  if (evt.type === "done") {
+                    return {
+                      ...m,
+                      isStreaming: false,
+                      statusText: undefined,
+                      modelUsed: evt.model_used,
+                      durationMs: evt.duration_ms,
+                      suggestedTheme:
+                        (evt.suggested_theme as TaxThemeCode) ||
+                        m.suggestedTheme,
+                      followUps: evt.follow_ups || [],
+                    };
+                  }
+                  return m;
+                }),
+              };
+            })
+          );
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId
+              ? {
+                  ...s,
+                  messages: s.messages.map((m) =>
+                    m.id === assistantMsgId
+                      ? {
+                          ...m,
+                          isStreaming: false,
+                          statusText: undefined,
+                          content:
+                            m.content ||
+                            `Koneksi ke layanan AI lokal sedang terputus (${err?.message || err}). Pastikan server backend aktif lalu klik Ulangi.`,
+                        }
+                      : m
+                  ),
+                }
+              : s
+          )
+        );
+      }
+    } finally {
+      setIsGenerating(false);
+      abortControllerRef.current = null;
+    }
+  }
+
+  function submitEditedMessage(msgIndex: number) {
+    const trimmed = editingText.trim();
+    if (!trimmed || isGenerating) return;
+    setEditingMsgId(null);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? { ...s, messages: s.messages.slice(0, msgIndex) }
+          : s
+      )
+    );
+    setTimeout(() => sendPrompt(trimmed), 30);
+  }
+
+  function switchAndRetryQuestion(
+    targetTheme: TaxThemeCode,
+    questionText?: string
+  ) {
+    if (isGenerating) return;
+    const q = questionText || "";
+    if (!q) {
+      switchTheme(targetTheme);
+      return;
+    }
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? {
+              ...s,
+              theme: targetTheme,
+              messages: s.messages.slice(0, Math.max(0, s.messages.length - 2)),
+            }
+          : s
+      )
+    );
+    setTimeout(() => sendPrompt(q, targetTheme), 40);
+  }
+
+  function regenerateLastResponse() {
+    if (isGenerating) return;
+    const msgs = activeSession.messages;
+    const lastUserIdx = [...msgs]
+      .reverse()
+      .findIndex((m) => m.role === "user");
+    if (lastUserIdx === -1) return;
+    const actualIdx = msgs.length - 1 - lastUserIdx;
+    const lastUserQuestion = msgs[actualIdx].content;
+
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? { ...s, messages: s.messages.slice(0, actualIdx) }
+          : s
+      )
+    );
+    setTimeout(() => sendPrompt(lastUserQuestion), 30);
+  }
+
+  function copyMessage(m: ChatMessage) {
+    navigator.clipboard.writeText(m.content);
+    setCopiedId(m.id);
+    setTimeout(() => setCopiedId(""), 2000);
+  }
+
+  function handleCopyInlineCode(codeText: string) {
+    navigator.clipboard.writeText(codeText);
+    showToastMessage(`Disalin: ${codeText}`);
+  }
+
+  const isChatEmpty = activeSession.messages.length === 0;
+
+  return (
+    <div className="app-layout">
+      {/* Mobile Drawer Backdrop */}
+      {sidebarOpen && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Navigation Sidebar */}
+      <aside
+        className={`sidebar-shell ${
+          sidebarOpen ? "sidebar-open" : "sidebar-closed"
+        }`}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "10px",
+            minWidth: "240px",
+          }}
+        >
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="icon-btn"
+            title="Tutup Sidebar (⌘B)"
+          >
+            <svg
+              width="19"
+              height="19"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 3v18" />
+            </svg>
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+            <button
+              onClick={() => {
+                setCmdOpen(true);
+                setCmdQuery("");
+              }}
+              className="icon-btn"
+              title="Cari Percakapan & Tema Pajak (⌘K)"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </button>
+
+            <button
+              onClick={() => createNewChat()}
+              className="icon-btn"
+              title="Percakapan Baru"
+            >
+              <svg
+                width="19"
+                height="19"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <button
+          onClick={() => createNewChat()}
+          className="session-item"
+          style={{
+            marginBottom: "14px",
+            minWidth: "240px",
+            fontWeight: 500,
+            color: "#ececec",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "26px",
+                height: "26px",
+                borderRadius: "999px",
+                background: "#2a2a2a",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "#ececec",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ThemeIcon code={currentTheme} color={themeConfig.iconColor} />
+            </div>
+            <span>Pajak Daerah DKI Jakarta</span>
+          </div>
+        </button>
+
+        <div
+          style={{
+            fontSize: "11.5px",
+            fontWeight: 600,
+            color: "#7a7a7a",
+            padding: "4px 10px 6px",
+            minWidth: "240px",
+          }}
+        >
+          Riwayat Percakapan
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+            minWidth: "240px",
+          }}
+        >
+          {sessions.map((s) => {
+            const active = s.id === activeSessionId;
+            return (
+              <div
+                key={s.id}
+                onClick={() => {
+                  setActiveSessionId(s.id);
+                  closeSidebarOnMobile();
+                }}
+                className={`session-item ${active ? "active" : ""}`}
+              >
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                  }}
+                >
+                  {s.title}
+                </span>
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#7a7a7a",
+                    fontWeight: 500,
+                  }}
+                >
+                  {s.theme}
+                </span>
+                {sessions.length > 1 && (
+                  <button
+                    onClick={(e) => deleteSession(s.id, e)}
+                    className="delete-btn"
+                    title="Hapus percakapan"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            paddingTop: "10px",
+            marginTop: "8px",
+            minWidth: "240px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "8px 10px",
+              borderRadius: "8px",
+            }}
+          >
+            <div
+              style={{
+                width: "30px",
+                height: "30px",
+                borderRadius: "999px",
+                background: "#2a2a2a",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#ececec",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 600,
+                fontSize: "11px",
+              }}
+            >
+              DKI
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: "#ececec",
+                }}
+              >
+                Bapenda DKI Jakarta
+              </div>
+              <div style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
+                Layanan Data Pajak Lokal
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Conversation Canvas */}
+      <div className="main-canvas">
+        <header className="top-header">
+          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            {!sidebarOpen && (
+              <>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="icon-btn"
+                  title="Buka Sidebar (⌘B)"
+                >
+                  <svg
+                    width="19"
+                    height="19"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M9 3v18" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => createNewChat()}
+                  className="icon-btn"
+                  title="Percakapan Baru"
+                >
+                  <svg
+                    width="19"
+                    height="19"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                </button>
+              </>
+            )}
+
+            <div ref={modelDropdownRef} style={{ position: "relative" }}>
+              <button
+                onClick={() => setModelMenuOpen((v) => !v)}
+                className={`model-selector-btn ${modelMenuOpen ? "open" : ""}`}
+              >
+                <span>Pajak DKI AI</span>
+                <span
+                  style={{
+                    color: "#8e8e8e",
+                    fontWeight: 400,
+                    fontSize: "13.5px",
+                  }}
+                >
+                  {selectedModel === "gemma4:cloud"
+                    ? "Gemma 4"
+                    : selectedModel}
+                </span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#8e8e8e"
+                  strokeWidth="2"
+                  style={{
+                    transform: modelMenuOpen ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+
+              {modelMenuOpen && (
+                <div className="model-dropdown">
+                  {[
+                    {
+                      id: "gemma4:cloud",
+                      name: "Gemma 4 Cloud",
+                      desc: "Respons cepat untuk konsultasi pajak DKI",
+                    },
+                    {
+                      id: "gemma4:e2b",
+                      name: "Gemma 4 E2B (Lokal)",
+                      desc: "Berjalan 100% offline di perangkat ini",
+                    },
+                    {
+                      id: "qwen3:4b",
+                      name: "Qwen 3 4B (Lokal)",
+                      desc: "Model penalaran lokal offline",
+                    },
+                  ].map((m) => {
+                    const isSelected = selectedModel === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          setSelectedModel(m.id);
+                          setModelMenuOpen(false);
+                        }}
+                        className={`model-option ${
+                          isSelected ? "selected" : ""
+                        }`}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize: "13.5px",
+                              fontWeight: 600,
+                              color: "#ffffff",
+                            }}
+                          >
+                            {m.name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#9ca3af" }}>
+                            {m.desc}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span style={{ color: "#ececec", fontSize: "14px" }}>
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCmdOpen(true);
+              setCmdQuery("");
+            }}
+            style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "8px",
+              padding: "4px 10px",
+              fontSize: "12px",
+              color: "#8e8e8e",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              whiteSpace: "nowrap",
+            }}
+            title="Buka Pencarian Cepat"
+          >
+            <span>Cari</span>
+            <kbd
+              style={{
+                fontSize: "11px",
+                color: "#b4b4b4",
+                fontFamily: "inherit",
+              }}
+            >
+              ⌘K
+            </kbd>
+          </button>
+        </header>
+
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScrollArea}
+          key={`${activeSessionId}-${currentTheme}`}
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {isChatEmpty ? (
+            <div className="empty-hero">
+              <h2 className="hero-title">{themeConfig.greeting}</h2>
+              <p className="hero-subtitle">{themeConfig.subtitle}</p>
+
+              <div className="chip-row">
+                {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[]).map((code) => {
+                  const t = DKI_TAX_THEMES[code];
+                  const isActive = currentTheme === code;
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => switchTheme(code)}
+                      className={`chatgpt-chip ${isActive ? "active" : ""}`}
+                    >
+                      <ThemeIcon code={code} color={t.iconColor} />
+                      <span>{t.shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="suggestion-grid">
+                {themeConfig.suggestions.map((card, i) => (
+                  <button
+                    key={`${currentTheme}-${i}`}
+                    onClick={() => sendPrompt(card.prompt)}
+                    className="suggestion-card"
+                    style={{ animationDelay: `${i * 45}ms` }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "13.5px",
+                        fontWeight: 500,
+                        color: "#ececec",
+                      }}
+                    >
+                      {card.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#7a7a7a",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {card.subtitle}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                maxWidth: "740px",
+                width: "100%",
+                margin: "0 auto",
+                padding: "18px 16px 32px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "24px",
+              }}
+            >
+              {activeSession.messages.map((m, idx) => (
+                <div
+                  key={m.id}
+                  className={
+                    m.role === "user"
+                      ? "msg-user-enter"
+                      : "msg-assistant-enter"
+                  }
+                  style={{ display: "flex", flexDirection: "column" }}
+                >
+                  {m.role === "user" ? (
+                    editingMsgId === m.id ? (
+                      <div
+                        style={{
+                          alignSelf: "flex-end",
+                          width: "100%",
+                          maxWidth: "88%",
+                          background: "#2f2f2f",
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          borderRadius: "18px",
+                          padding: "12px 14px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "10px",
+                        }}
+                      >
+                        <textarea
+                          rows={2}
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          style={{
+                            width: "100%",
+                            background: "transparent",
+                            border: "none",
+                            resize: "none",
+                            color: "#ececec",
+                            fontSize: "15px",
+                            lineHeight: 1.5,
+                          }}
+                          autoFocus
+                        />
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            gap: "8px",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setEditingMsgId(null)}
+                            className="action-bar-btn"
+                            style={{ padding: "6px 12px" }}
+                          >
+                            Batal
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => submitEditedMessage(idx)}
+                            style={{
+                              background: "#ececec",
+                              color: "#171717",
+                              border: "none",
+                              borderRadius: "999px",
+                              padding: "6px 14px",
+                              fontSize: "12.5px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Kirim Ulang
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="user-msg-row">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMsgId(m.id);
+                            setEditingText(m.content);
+                          }}
+                          className="user-edit-trigger"
+                          title="Edit pertanyaan"
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                          >
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+                          </svg>
+                        </button>
+                        <div
+                          style={{
+                            maxWidth: "82%",
+                            background: "#2f2f2f",
+                            color: "#ececec",
+                            padding: "11px 16px",
+                            borderRadius: "20px",
+                            fontSize: "15px",
+                            lineHeight: 1.55,
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {m.content}
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "12px",
+                        width: "100%",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          minWidth: "28px",
+                          borderRadius: "999px",
+                          background: "#2a2a2a",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginTop: "2px",
+                        }}
+                      >
+                        <ThemeIcon
+                          code={currentTheme}
+                          color={themeConfig.iconColor}
+                        />
+                      </div>
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {m.statusText && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              fontSize: "13.5px",
+                              marginBottom: "6px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: "7px",
+                                height: "7px",
+                                borderRadius: "999px",
+                                background: "#ececec",
+                                animation: "pulseDot 1s infinite ease-in-out",
+                              }}
+                            />
+                            <span className="shimmer-status">{m.statusText}</span>
+                          </div>
+                        )}
+
+                        {m.thinking && (
+                          <details
+                            style={{
+                              marginBottom: "10px",
+                              background: "rgba(255,255,255,0.03)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              borderRadius: "10px",
+                              padding: "8px 12px",
+                              fontSize: "12.5px",
+                              color: "#9ca3af",
+                            }}
+                          >
+                            <summary style={{ cursor: "pointer", fontWeight: 500 }}>
+                              Penalaran
+                            </summary>
+                            <div
+                              style={{
+                                marginTop: "6px",
+                                whiteSpace: "pre-wrap",
+                              }}
+                            >
+                              {m.thinking}
+                            </div>
+                          </details>
+                        )}
+
+                        <FormattedMarkdown
+                          content={m.content}
+                          isStreaming={m.isStreaming}
+                          onCopyCode={handleCopyInlineCode}
+                        />
+
+                        {!m.isStreaming &&
+                          m.suggestedTheme &&
+                          m.suggestedTheme !== currentTheme && (
+                            <div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  switchAndRetryQuestion(
+                                    m.suggestedTheme!,
+                                    m.originalQuestion
+                                  )
+                                }
+                                className="cross-theme-btn"
+                              >
+                                <ThemeIcon
+                                  code={m.suggestedTheme}
+                                  color={
+                                    DKI_TAX_THEMES[m.suggestedTheme].iconColor
+                                  }
+                                />
+                                <span>
+                                  Pindah ke{" "}
+                                  {DKI_TAX_THEMES[m.suggestedTheme].shortLabel} &
+                                  Tanya Ulang
+                                </span>
+                                <span style={{ color: "#8e8e8e" }}>→</span>
+                              </button>
+                            </div>
+                          )}
+
+                        {!m.isStreaming && m.content && (
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              marginTop: "8px",
+                            }}
+                          >
+                            <button
+                              onClick={() => copyMessage(m)}
+                              className="action-bar-btn"
+                              title="Salin jawaban"
+                            >
+                              {copiedId === m.id ? (
+                                <span>✓ Tersalin</span>
+                              ) : (
+                                <>
+                                  <svg
+                                    width="14"
+                                    height="14"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                  >
+                                    <rect
+                                      x="9"
+                                      y="9"
+                                      width="13"
+                                      height="13"
+                                      rx="2"
+                                    />
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                                  </svg>
+                                  <span>Salin</span>
+                                </>
+                              )}
+                            </button>
+
+                            {idx === activeSession.messages.length - 1 && (
+                              <button
+                                onClick={regenerateLastResponse}
+                                className="action-bar-btn"
+                                title="Ulangi jawaban"
+                              >
+                                <svg
+                                  width="14"
+                                  height="14"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path d="M21 2v6h-6" />
+                                  <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+                                  <path d="M3 22v-6h6" />
+                                  <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+                                </svg>
+                                <span>Ulangi</span>
+                              </button>
+                            )}
+
+                            {m.durationMs && (
+                              <span
+                                style={{
+                                  fontSize: "11.5px",
+                                  color: "#6b6b6b",
+                                  marginLeft: "6px",
+                                }}
+                              >
+                                {(m.durationMs / 1000).toFixed(1)} dtk
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {!m.isStreaming &&
+                          idx === activeSession.messages.length - 1 &&
+                          !m.suggestedTheme &&
+                          m.followUps &&
+                          m.followUps.length > 0 && (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-start",
+                                gap: "6px",
+                                marginTop: "14px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "11.5px",
+                                  color: "#7a7a7a",
+                                  fontWeight: 500,
+                                }}
+                              >
+                                Tindak lanjut yang disarankan
+                              </span>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: "6px",
+                                }}
+                              >
+                                {m.followUps.map((q, fIdx) => (
+                                  <button
+                                    key={fIdx}
+                                    type="button"
+                                    onClick={() => sendPrompt(q)}
+                                    className="followup-chip"
+                                  >
+                                    <span style={{ color: "#7a7a7a" }}>↳</span>
+                                    <span>{q}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={chatBottomRef} />
+            </div>
+          )}
+        </div>
+
+        {showScrollBottom && !isChatEmpty && (
+          <button
+            type="button"
+            onClick={scrollToBottomNow}
+            className="scroll-bottom-btn"
+            title="Gulir ke bawah"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+            >
+              <path d="M12 5v14M19 12l-7 7-7-7" />
+            </svg>
+          </button>
+        )}
+
+        {/* Bottom Composer */}
+        <div className="composer-wrapper">
+          <div className="composer-shell">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendPrompt();
+                }
+              }}
+              placeholder={themeConfig.placeholder}
+              style={{
+                width: "100%",
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                resize: "none",
+                color: "#ececec",
+                fontSize: "15px",
+                lineHeight: "1.5",
+                padding: "2px 2px",
+                maxHeight: "160px",
+              }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+              }}
+            >
+              <div ref={themeDropdownRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setThemeMenuOpen((v) => !v)}
+                  className={`composer-pill-btn ${themeMenuOpen ? "open" : ""}`}
+                  title="Ganti Jenis Pajak DKI Jakarta"
+                >
+                  <ThemeIcon
+                    code={currentTheme}
+                    color={themeConfig.iconColor}
+                  />
+                  <span>{themeConfig.shortLabel}</span>
+                  <span
+                    className="composer-pill-scope"
+                    style={{ color: "rgba(255,255,255,0.2)" }}
+                  >
+                    |
+                  </span>
+                  <span
+                    className="composer-pill-scope"
+                    style={{ color: "#8e8e8e", fontWeight: 400 }}
+                  >
+                    DKI Jakarta
+                  </span>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#8e8e8e"
+                    strokeWidth="2"
+                    style={{
+                      transform: themeMenuOpen
+                        ? "rotate(180deg)"
+                        : "rotate(0deg)",
+                      transition: "transform 0.2s ease",
+                    }}
+                  >
+                    <path d="M18 15l-6-6-6 6" />
+                  </svg>
+                </button>
+
+                {themeMenuOpen && (
+                  <div className="theme-up-dropdown">
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        color: "#7a7a7a",
+                        padding: "6px 11px 4px",
+                      }}
+                    >
+                      Jenis Pajak Daerah • DKI Jakarta
+                    </div>
+                    {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[]).map(
+                      (code) => {
+                        const item = DKI_TAX_THEMES[code];
+                        const isSelected = currentTheme === code;
+                        return (
+                          <button
+                            key={code}
+                            type="button"
+                            onClick={() => switchTheme(code)}
+                            className={`model-option ${
+                              isSelected ? "selected" : ""
+                            }`}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "10px",
+                              }}
+                            >
+                              <div style={{ marginTop: "3px" }}>
+                                <ThemeIcon
+                                  code={code}
+                                  color={item.iconColor}
+                                />
+                              </div>
+                              <div>
+                                <div
+                                  style={{
+                                    fontSize: "13px",
+                                    fontWeight: 500,
+                                    color: "#ececec",
+                                  }}
+                                >
+                                  {item.label}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "11.5px",
+                                    color: "#8e8e8e",
+                                  }}
+                                >
+                                  {item.desc}
+                                </div>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <span
+                                style={{
+                                  color: "#ececec",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {isGenerating ? (
+                <button
+                  type="button"
+                  onClick={stopGeneration}
+                  className="send-btn ready"
+                  title="Hentikan respons (Esc)"
+                >
+                  ■
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!input.trim()}
+                  onClick={() => sendPrompt()}
+                  className={`send-btn ${input.trim() ? "ready" : "disabled"}`}
+                  title="Kirim pesan (Enter)"
+                >
+                  ↑
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              textAlign: "center",
+              fontSize: "11px",
+              color: "#737373",
+              marginTop: "7px",
+            }}
+          >
+            Data bersumber langsung dari arsip lokal Bapenda DKI Jakarta • Tanpa
+            akses internet.
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Search & Theme Switcher Dialog (Cmd+K) */}
+      {cmdOpen && (
+        <div className="cmd-backdrop" onClick={() => setCmdOpen(false)}>
+          <div className="cmd-dialog" onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "14px 16px",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <svg
+                width="17"
+                height="17"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#8e8e8e"
+                strokeWidth="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                value={cmdQuery}
+                onChange={(e) => setCmdQuery(e.target.value)}
+                placeholder="Cari riwayat percakapan atau pilih jenis pajak DKI..."
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  color: "#ececec",
+                  fontSize: "14.5px",
+                }}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setCmdOpen(false)}
+                style={{
+                  background: "rgba(255,255,255,0.07)",
+                  border: "none",
+                  borderRadius: "6px",
+                  padding: "2px 7px",
+                  fontSize: "11px",
+                  color: "#9ca3af",
+                  cursor: "pointer",
+                }}
+              >
+                Esc
+              </button>
+            </div>
+
+            <div
+              style={{
+                maxHeight: "340px",
+                overflowY: "auto",
+                padding: "8px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#7a7a7a",
+                  padding: "4px 10px 6px",
+                }}
+              >
+                Pindah Fokus Pajak DKI Jakarta
+              </div>
+              {(Object.keys(DKI_TAX_THEMES) as TaxThemeCode[])
+                .filter((code) => {
+                  const t = DKI_TAX_THEMES[code];
+                  const q = cmdQuery.toLowerCase();
+                  return (
+                    !q ||
+                    t.label.toLowerCase().includes(q) ||
+                    t.desc.toLowerCase().includes(q)
+                  );
+                })
+                .map((code) => {
+                  const t = DKI_TAX_THEMES[code];
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        switchTheme(code);
+                        setCmdOpen(false);
+                      }}
+                      className={`model-option ${
+                        currentTheme === code ? "selected" : ""
+                      }`}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                        }}
+                      >
+                        <ThemeIcon code={code} color={t.iconColor} />
+                        <div>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              fontWeight: 500,
+                              color: "#ececec",
+                            }}
+                          >
+                            {t.label}
+                          </div>
+                          <div style={{ fontSize: "11.5px", color: "#8e8e8e" }}>
+                            {t.desc}
+                          </div>
+                        </div>
+                      </div>
+                      {currentTheme === code && (
+                        <span style={{ fontSize: "12px", color: "#9ca3af" }}>
+                          Aktif
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+              <div
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#7a7a7a",
+                  padding: "10px 10px 6px",
+                }}
+              >
+                Riwayat Percakapan
+              </div>
+              {sessions
+                .filter(
+                  (s) =>
+                    !cmdQuery ||
+                    s.title.toLowerCase().includes(cmdQuery.toLowerCase())
+                )
+                .map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveSessionId(s.id);
+                      setCmdOpen(false);
+                    }}
+                    className="model-option"
+                  >
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        color: "#ececec",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {s.title}
+                    </span>
+                    <span style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
+                      {s.theme}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="ux-toast">
+          <span>{toast.message}</span>
+          {toast.undoSession && (
+            <button
+              type="button"
+              onClick={undoDeleteSession}
+              style={{
+                background: "rgba(255,255,255,0.1)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                borderRadius: "6px",
+                padding: "3px 9px",
+                fontSize: "12px",
+                fontWeight: 500,
+                color: "#ffffff",
+                cursor: "pointer",
+              }}
+            >
+              Urungkan
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
