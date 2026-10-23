@@ -642,7 +642,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pbb-p2-ai-backend"
+name = "jakarta-smarttax-chatbot-ai-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
