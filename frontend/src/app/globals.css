@@ -964,3 +964,30 @@ button:focus-visible {
     justify-content: space-between;
   }
 }
+
+/* Phosphor icons retain their intended size inside compact controls. */
+.app-layout svg {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  list-style: none;
+}
+
+.thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-caret {
+  transition: transform 0.16s ease;
+}
+
+details[open] > .thinking-summary .thinking-caret {
+  transform: rotate(90deg);
+}

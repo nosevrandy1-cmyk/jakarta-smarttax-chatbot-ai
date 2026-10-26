@@ -38,8 +38,8 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 - **Embedding Engine (`backend/app/embedder.py`):** Mendukung model lokal (`bge-m3` / HuggingFace `transformers`) dengan *fallback* deterministik 384-dimensi untuk lingkungan *offline*.
 
 ### 4. AI / LLM Runtime (Ollama — Gemma & DeepSeek)
-- **Gemma (`gemma2:9b`):** Digunakan sebagai mesin utama untuk RAG cepat pada konsultasi tarif, rumus perhitungan, dan pengecekan data objek pajak.
-- **DeepSeek (`deepseek-r1:8b`):** Digunakan untuk penalaran mendalam saat menelusuri keterkaitan pasal/ayat dan menyusun draf perumusan dasar hukum baru (*legal drafting*). Mendukung pembagian beban paralel 2 PC di jaringan LAN (`OLLAMA_HOST` & `OLLAMA_SECONDARY_HOST`).
+- **Gemma (`gemma4:12b`):** Digunakan sebagai mesin utama untuk RAG cepat pada konsultasi tarif, rumus perhitungan, dan pengecekan data objek pajak.
+- **Model drafting (`OLLAMA_DRAFTING_MODEL`):** Secara default memakai `gemma4:12b` juga. Bisa diganti menjadi `deepseek-r1:8b` jika model tersebut sudah tersedia untuk perumusan dasar hukum baru (*legal drafting*). Mendukung pembagian beban paralel 2 PC di jaringan LAN (`OLLAMA_HOST` & `OLLAMA_SECONDARY_HOST`).
 - **Deterministic Grounded Fallback:** Jika layanan Ollama di mesin lokal belum aktif, backend otomatis menyajikan tabel data, bunyi pasal, dan kerangka *legal drafting* langsung dari SQLite & Qdrant.
 
 ---
@@ -73,6 +73,39 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 ---
 
 ## Cara Menjalankan di Mesin Lokal
+
+### Ollama lokal (Gemma 4 12B)
+
+Pastikan Ollama berjalan di `http://localhost:11434` dan `ollama list` menampilkan
+`gemma4:12b`. Jika belum terpasang, jalankan `ollama pull gemma4:12b`.
+Backend otomatis membaca `backend/.env`; variabel lingkungan proses tetap lebih diutamakan.
+
+```dotenv
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=gemma4:12b
+OLLAMA_DRAFTING_MODEL=gemma4:12b
+OLLAMA_TIMEOUT=300
+OLLAMA_NUM_CTX=8192
+OLLAMA_THINK=false
+```
+
+Gemma secara default langsung menghasilkan jawaban (`OLLAMA_THINK=false`).
+Ubah menjadi `true` jika ingin mengaktifkan penalaran tambahan.
+Ketiga mode memakai Gemma lokal. Pilihan model di tampilan mengikuti model yang
+terpasang pada Ollama. Permintaan pertama dapat lebih lama saat model dimuat ke memori.
+Periksa `GET http://localhost:8000/api/health` untuk status koneksi dan model aktif.
+Respons chat menyertakan `response_source`: `ollama` untuk keluaran LLM,
+`local_fallback` untuk jawaban dari data lokal saat LLM gagal, atau `local_routing`
+untuk arahan pindah kategori pajak.
+
+Pada Windows, jalankan backend dari folder `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Jalankan frontend dari folder `frontend` dengan `npm run dev`.
+
 
 ### 1. Menjalankan Backend (Port `8000`)
 

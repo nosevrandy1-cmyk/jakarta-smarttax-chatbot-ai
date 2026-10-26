@@ -1,6 +1,27 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { ArrowBendDownRightIcon } from "@phosphor-icons/react/dist/csr/ArrowBendDownRight";
+import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
+import { ArrowRightIcon } from "@phosphor-icons/react/dist/csr/ArrowRight";
+import { ArrowUpIcon } from "@phosphor-icons/react/dist/csr/ArrowUp";
+import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
+import { BuildingsIcon } from "@phosphor-icons/react/dist/csr/Buildings";
+import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
+import { CaretUpIcon } from "@phosphor-icons/react/dist/csr/CaretUp";
+import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
+import { CoffeeIcon } from "@phosphor-icons/react/dist/csr/Coffee";
+import { CommandIcon } from "@phosphor-icons/react/dist/csr/Command";
+import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
+import { DropIcon } from "@phosphor-icons/react/dist/csr/Drop";
+import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
+import { MonitorIcon } from "@phosphor-icons/react/dist/csr/Monitor";
+import { NotePencilIcon } from "@phosphor-icons/react/dist/csr/NotePencil";
+import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
+import { SidebarSimpleIcon } from "@phosphor-icons/react/dist/csr/SidebarSimple";
+import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
+import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import {
   CAPABILITY_MODES,
   CapabilityModeCode,
@@ -34,89 +55,23 @@ function ThemeIcon({
   switch (code) {
     case "PBB-P2":
       return (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M3 21h18" />
-          <path d="M5 21V7l8-4v18" />
-          <path d="M19 21V11l-6-4" />
-          <path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01" />
-        </svg>
+        <BuildingsIcon size={15} weight="regular" aria-hidden="true" color={color} />
       );
     case "PBJT":
       return (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M17 8h1a4 4 0 1 1 0 8h-1" />
-          <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z" />
-          <line x1="6" y1="2" x2="6" y2="4" />
-          <line x1="10" y1="2" x2="10" y2="4" />
-          <line x1="14" y1="2" x2="14" y2="4" />
-        </svg>
+        <CoffeeIcon size={15} weight="regular" aria-hidden="true" color={color} />
       );
     case "BPHTB":
       return (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <polyline points="14 2 14 8 20 8" />
-          <line x1="9" y1="13" x2="15" y2="13" />
-          <line x1="9" y1="17" x2="13" y2="17" />
-        </svg>
+        <FileTextIcon size={15} weight="regular" aria-hidden="true" color={color} />
       );
     case "REKLAME":
       return (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="3" y="4" width="18" height="11" rx="2" />
-          <path d="M8 15v5M16 15v5M5 20h14" />
-        </svg>
+        <MonitorIcon size={15} weight="regular" aria-hidden="true" color={color} />
       );
     case "PAT":
       return (
-        <svg
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={color}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
-        </svg>
+        <DropIcon size={15} weight="regular" aria-hidden="true" color={color} />
       );
   }
 }
@@ -491,10 +446,29 @@ function FormattedMarkdown({
 
 export default function TaxAssistantView() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
-  const [selectedModel, setSelectedModel] = useState<string>("gemma2:9b");
+  const [selectedModel, setSelectedModel] = useState<string>("gemma4:12b");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadLocalModels() {
+      try {
+        const response = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+        if (!response.ok) return;
+        const health = await response.json();
+        const installed: string[] = health.ollama?.installed_local_models || [];
+        if (controller.signal.aborted || !installed.length) return;
+        const configured = health.ollama?.default_model;
+        setSelectedModel(installed.includes(configured) ? configured : installed[0]);
+      } catch {
+        // Keep the default model if the backend is still starting.
+      }
+    }
+    void loadLocalModels();
+    return () => controller.abort();
+  }, []);
+
   const [capabilityMode, setCapabilityMode] =
     useState<CapabilityModeCode>("konsultasi");
-  const [modelMenuOpen, setModelMenuOpen] = useState<boolean>(false);
   const [themeMenuOpen, setThemeMenuOpen] = useState<boolean>(false);
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
   const [cmdQuery, setCmdQuery] = useState<string>("");
@@ -531,7 +505,6 @@ export default function TaxAssistantView() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
-  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
   const themeDropdownRef = useRef<HTMLDivElement | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -602,23 +575,16 @@ export default function TaxAssistantView() {
       } else if (e.key === "Escape") {
         if (cmdOpen) setCmdOpen(false);
         else if (themeMenuOpen) setThemeMenuOpen(false);
-        else if (modelMenuOpen) setModelMenuOpen(false);
         else if (editingMsgId) setEditingMsgId(null);
         else if (isGenerating) stopGeneration();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cmdOpen, themeMenuOpen, modelMenuOpen, editingMsgId, isGenerating]);
+  }, [cmdOpen, themeMenuOpen, editingMsgId, isGenerating]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (
-        modelDropdownRef.current &&
-        !modelDropdownRef.current.contains(e.target as Node)
-      ) {
-        setModelMenuOpen(false);
-      }
       if (
         themeDropdownRef.current &&
         !themeDropdownRef.current.contains(e.target as Node)
@@ -1019,17 +985,7 @@ export default function TaxAssistantView() {
             className="icon-btn"
             title="Tutup Sidebar (⌘B)"
           >
-            <svg
-              width="19"
-              height="19"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M9 3v18" />
-            </svg>
+            <SidebarSimpleIcon size={19} weight="regular" aria-hidden="true" />
           </button>
 
           <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
@@ -1041,17 +997,7 @@ export default function TaxAssistantView() {
               className="icon-btn"
               title="Cari Percakapan & Tema Pajak (⌘K)"
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              <MagnifyingGlassIcon size={18} weight="regular" aria-hidden="true" />
             </button>
 
             <button
@@ -1059,17 +1005,7 @@ export default function TaxAssistantView() {
               className="icon-btn"
               title="Percakapan Baru"
             >
-              <svg
-                width="19"
-                height="19"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              >
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
+              <NotePencilIcon size={19} weight="regular" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -1162,7 +1098,7 @@ export default function TaxAssistantView() {
                     className="delete-btn"
                     title="Hapus percakapan"
                   >
-                    ✕
+                    <XIcon size={12} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -1233,122 +1169,19 @@ export default function TaxAssistantView() {
                   className="icon-btn"
                   title="Buka Sidebar (⌘B)"
                 >
-                  <svg
-                    width="19"
-                    height="19"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <path d="M9 3v18" />
-                  </svg>
+                  <SidebarSimpleIcon size={19} weight="regular" aria-hidden="true" />
                 </button>
                 <button
                   onClick={() => createNewChat()}
                   className="icon-btn"
                   title="Percakapan Baru"
                 >
-                  <svg
-                    width="19"
-                    height="19"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                  >
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                  </svg>
+                  <NotePencilIcon size={19} weight="regular" aria-hidden="true" />
                 </button>
               </>
             )}
 
-            <div ref={modelDropdownRef} style={{ position: "relative" }}>
-              <button
-                onClick={() => setModelMenuOpen((v) => !v)}
-                className={`model-selector-btn ${modelMenuOpen ? "open" : ""}`}
-              >
-                <span>Jakarta SmartTax</span>
-                <span
-                  style={{
-                    color: "#8e8e8e",
-                    fontWeight: 400,
-                    fontSize: "13.5px",
-                  }}
-                >
-                  {selectedModel.startsWith("deepseek")
-                    ? "DeepSeek"
-                    : "Gemma"}
-                </span>
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#8e8e8e"
-                  strokeWidth="2"
-                  style={{
-                    transform: modelMenuOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.2s ease",
-                  }}
-                >
-                  <path d="M6 9l6 6 6-6" />
-                </svg>
-              </button>
 
-              {modelMenuOpen && (
-                <div className="model-dropdown">
-                  {[
-                    {
-                      id: "gemma2:9b",
-                      name: "Gemma (Ollama Lokal)",
-                      desc: "RAG cepat & presisi untuk tarif, rumus, dan data pajak DKI",
-                    },
-                    {
-                      id: "deepseek-r1:8b",
-                      name: "DeepSeek (Ollama Lokal)",
-                      desc: "Penalaran mendalam untuk pasal, dasar hukum, & perumusan",
-                    },
-                  ].map((m) => {
-                    const isSelected = selectedModel === m.id;
-                    return (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          setSelectedModel(m.id);
-                          setModelMenuOpen(false);
-                        }}
-                        className={`model-option ${
-                          isSelected ? "selected" : ""
-                        }`}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              fontSize: "13.5px",
-                              fontWeight: 600,
-                              color: "#ffffff",
-                            }}
-                          >
-                            {m.name}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#9ca3af" }}>
-                            {m.desc}
-                          </div>
-                        </div>
-                        {isSelected && (
-                          <span style={{ color: "#ececec", fontSize: "14px" }}>
-                            ✓
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
 
           <button
@@ -1378,9 +1211,12 @@ export default function TaxAssistantView() {
                 fontSize: "11px",
                 color: "#b4b4b4",
                 fontFamily: "inherit",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "2px",
               }}
             >
-              ⌘K
+              <CommandIcon size={12} aria-hidden="true" />K
             </kbd>
           </button>
         </header>
@@ -1440,9 +1276,6 @@ export default function TaxAssistantView() {
                       type="button"
                       onClick={() => {
                         setCapabilityMode(mode.code);
-                        if (mode.code === "perumusan_hukum") {
-                          setSelectedModel("deepseek-r1:8b");
-                        }
                       }}
                       style={{
                         border: "none",
@@ -1591,17 +1424,7 @@ export default function TaxAssistantView() {
                           className="user-edit-trigger"
                           title="Edit pertanyaan"
                         >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                          >
-                            <path d="M12 20h9" />
-                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                          </svg>
+                          <PencilSimpleIcon size={14} weight="regular" aria-hidden="true" />
                         </button>
                         <div
                           style={{
@@ -1684,7 +1507,8 @@ export default function TaxAssistantView() {
                               color: "#9ca3af",
                             }}
                           >
-                            <summary style={{ cursor: "pointer", fontWeight: 500 }}>
+                            <summary className="thinking-summary">
+                              <CaretRightIcon size={13} className="thinking-caret" aria-hidden="true" />
                               Penalaran
                             </summary>
                             <div
@@ -1729,7 +1553,7 @@ export default function TaxAssistantView() {
                                   {DKI_TAX_THEMES[m.suggestedTheme].shortLabel} &
                                   Tanya Ulang
                                 </span>
-                                <span style={{ color: "#8e8e8e" }}>→</span>
+                                <ArrowRightIcon size={14} color="#8e8e8e" aria-hidden="true" />
                               </button>
                             </div>
                           )}
@@ -1749,26 +1573,10 @@ export default function TaxAssistantView() {
                               title="Salin jawaban"
                             >
                               {copiedId === m.id ? (
-                                <span>✓ Tersalin</span>
+                                <><CheckIcon size={14} aria-hidden="true" /><span>Tersalin</span></>
                               ) : (
                                 <>
-                                  <svg
-                                    width="14"
-                                    height="14"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                  >
-                                    <rect
-                                      x="9"
-                                      y="9"
-                                      width="13"
-                                      height="13"
-                                      rx="2"
-                                    />
-                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                  </svg>
+                                  <CopyIcon size={14} weight="regular" aria-hidden="true" />
                                   <span>Salin</span>
                                 </>
                               )}
@@ -1780,19 +1588,7 @@ export default function TaxAssistantView() {
                                 className="action-bar-btn"
                                 title="Ulangi jawaban"
                               >
-                                <svg
-                                  width="14"
-                                  height="14"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                >
-                                  <path d="M21 2v6h-6" />
-                                  <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-                                  <path d="M3 22v-6h6" />
-                                  <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-                                </svg>
+                                <ArrowsClockwiseIcon size={14} weight="regular" aria-hidden="true" />
                                 <span>Ulangi</span>
                               </button>
                             )}
@@ -1848,7 +1644,7 @@ export default function TaxAssistantView() {
                                     onClick={() => sendPrompt(q)}
                                     className="followup-chip"
                                   >
-                                    <span style={{ color: "#7a7a7a" }}>↳</span>
+                                    <ArrowBendDownRightIcon size={14} color="#7a7a7a" aria-hidden="true" />
                                     <span>{q}</span>
                                   </button>
                                 ))}
@@ -1872,16 +1668,7 @@ export default function TaxAssistantView() {
             className="scroll-bottom-btn"
             title="Gulir ke bawah"
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-            >
-              <path d="M12 5v14M19 12l-7 7-7-7" />
-            </svg>
+            <ArrowDownIcon size={16} weight="regular" aria-hidden="true" />
           </button>
         )}
 
@@ -1959,22 +1746,12 @@ export default function TaxAssistantView() {
                     >
                       DKI Jakarta
                     </span>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#8e8e8e"
-                      strokeWidth="2"
-                      style={{
+                    <CaretUpIcon size={12} weight="regular" aria-hidden="true" color="#8e8e8e" style={{
                         transform: themeMenuOpen
                           ? "rotate(180deg)"
                           : "rotate(0deg)",
                         transition: "transform 0.2s ease",
-                      }}
-                    >
-                      <path d="M18 15l-6-6-6 6" />
-                    </svg>
+                      }} />
                   </button>
 
                   {themeMenuOpen && (
@@ -2042,7 +1819,7 @@ export default function TaxAssistantView() {
                                     fontSize: "13px",
                                   }}
                                 >
-                                  ✓
+                                  <CheckIcon size={13} aria-hidden="true" />
                                 </span>
                               )}
                             </button>
@@ -2053,35 +1830,6 @@ export default function TaxAssistantView() {
                   )}
                 </div>
 
-                {CAPABILITY_MODES.map((mode) => {
-                  const active = capabilityMode === mode.code;
-                  return (
-                    <button
-                      key={mode.code}
-                      type="button"
-                      onClick={() => {
-                        setCapabilityMode(mode.code);
-                        if (mode.code === "perumusan_hukum") {
-                          setSelectedModel("deepseek-r1:8b");
-                        }
-                      }}
-                      className="composer-pill-btn"
-                      style={{
-                        background: active
-                          ? "rgba(255,255,255,0.12)"
-                          : "transparent",
-                        borderColor: active
-                          ? "rgba(255,255,255,0.22)"
-                          : "rgba(255,255,255,0.08)",
-                        color: active ? "#ffffff" : "#9ca3af",
-                        fontWeight: active ? 600 : 400,
-                      }}
-                      title={mode.description}
-                    >
-                      <span>{mode.shortLabel}</span>
-                    </button>
-                  );
-                })}
               </div>
 
               {isGenerating ? (
@@ -2091,7 +1839,7 @@ export default function TaxAssistantView() {
                   className="send-btn ready"
                   title="Hentikan respons (Esc)"
                 >
-                  ■
+                  <StopIcon size={14} weight="fill" aria-hidden="true" />
                 </button>
               ) : (
                 <button
@@ -2101,7 +1849,7 @@ export default function TaxAssistantView() {
                   className={`send-btn ${input.trim() ? "ready" : "disabled"}`}
                   title="Kirim pesan (Enter)"
                 >
-                  ↑
+                  <ArrowUpIcon size={18} weight="bold" aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -2134,17 +1882,7 @@ export default function TaxAssistantView() {
                 borderBottom: "1px solid rgba(255,255,255,0.08)",
               }}
             >
-              <svg
-                width="17"
-                height="17"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#8e8e8e"
-                strokeWidth="2"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
+              <MagnifyingGlassIcon size={17} weight="regular" aria-hidden="true" color="#8e8e8e" />
               <input
                 type="text"
                 value={cmdQuery}
