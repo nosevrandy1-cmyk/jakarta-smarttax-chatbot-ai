@@ -2,7 +2,11 @@ import os
 from pathlib import Path
 from typing import Dict, List
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Keep process environment overrides while loading local settings from any cwd.
+load_dotenv(BASE_DIR / ".env", override=False)
 DATA_DIR = BASE_DIR / "data"
 QDRANT_STORAGE_DIR = BASE_DIR / "qdrant_storage"
 
@@ -11,8 +15,11 @@ OLLAMA_SECONDARY_URL = os.getenv("OLLAMA_SECONDARY_HOST", OLLAMA_LOCAL_URL).rstr
 OLLAMA_CLOUD_URL = os.getenv("OLLAMA_CLOUD_URL", "https://ollama.com").rstrip("/")
 OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "").strip()
 
-DEFAULT_CHAT_MODEL = os.getenv("OLLAMA_MODEL", "gemma2:9b")
-DEEPSEEK_DRAFTING_MODEL = os.getenv("OLLAMA_DRAFTING_MODEL", "deepseek-r1:8b")
+DEFAULT_CHAT_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:12b")
+DEEPSEEK_DRAFTING_MODEL = os.getenv("OLLAMA_DRAFTING_MODEL", DEFAULT_CHAT_MODEL)
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "300"))
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+OLLAMA_THINK = os.getenv("OLLAMA_THINK", "false").lower() in ("1", "true", "yes")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 
 OLLAMA_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
@@ -25,7 +32,7 @@ OLLAMA_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
     "deepseek": {
         "id": DEEPSEEK_DRAFTING_MODEL,
         "host": OLLAMA_SECONDARY_URL,
-        "label": "DeepSeek (Analisis Pasal & Perumusan Hukum)",
+        "label": f"{DEEPSEEK_DRAFTING_MODEL} (Analisis Pasal & Perumusan Hukum)",
         "role": "Telusur Pasal, Dasar Hukum & Legal Drafting",
     },
 }

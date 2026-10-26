@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import re
 import time
 from typing import Any, AsyncGenerator, Dict, List, Optional
@@ -12,6 +13,9 @@ from .config import (
     OLLAMA_CLOUD_URL,
     OLLAMA_LOCAL_URL,
     OLLAMA_SECONDARY_URL,
+    OLLAMA_TIMEOUT,
+    OLLAMA_NUM_CTX,
+    OLLAMA_THINK,
 )
 from .tax_db import (
     TAX_THEMES,
@@ -24,6 +28,8 @@ from .tax_db import (
     telusuri_pasal_hukum_dki,
 )
 from .vector_store import vector_store
+
+logger = logging.getLogger(__name__)
 
 # Modular Capability Modes for Easy Feature Scaling
 CAPABILITY_MODES: Dict[str, Dict[str, str]] = {
@@ -633,6 +639,7 @@ async def stream_smarttax_chat(
                 "suggested_theme": suggested_theme,
                 "follow_ups": follow_ups,
                 "model_used": selected_model,
+                "response_source": "local_routing",
                 "duration_ms": elapsed_ms,
             },
             ensure_ascii=False,
@@ -693,7 +700,9 @@ async def stream_smarttax_chat(
     in_deepseek_think_tag = False
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=10.0)
+        ) as client:
             async with client.stream(
                 "POST",
                 f"{base_url}/api/chat",
@@ -702,13 +711,17 @@ async def stream_smarttax_chat(
                     "model": api_model,
                     "messages": messages,
                     "stream": True,
+                    # Gemma can spend its output budget on thinking alone in long RAG requests.
+                    **({"think": OLLAMA_THINK} if api_model.startswith("gemma4:") else {}),
                     "options": {
+                        "num_ctx": OLLAMA_NUM_CTX,
                         "temperature": 0.0,
                         "top_p": 0.1,
                         "repeat_penalty": 1.1,
                     },
                 },
             ) as resp:
+                resp.raise_for_status()
                 if resp.status_code == 200:
                     async for line in resp.aiter_lines():
                         if not line.strip():
@@ -718,6 +731,8 @@ async def stream_smarttax_chat(
                         except Exception:
                             continue
 
+                        if chunk.get("error"):
+                            raise RuntimeError(chunk["error"])
                         msg_part = chunk.get("message") or {}
                         thinking_delta = msg_part.get("thinking") or ""
                         content_delta = msg_part.get("content") or ""
@@ -753,8 +768,8 @@ async def stream_smarttax_chat(
                                     {"type": "token", "delta": content_delta},
                                     ensure_ascii=False,
                                 ) + "\n"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Ollama request failed for %s at %s: %s", api_model, base_url, exc)
 
     if not streamed_any_token:
         deterministic_text = _build_local_deterministic_answer(
@@ -783,6 +798,7 @@ async def stream_smarttax_chat(
             "suggested_theme": suggested_theme,
             "follow_ups": follow_ups,
             "model_used": api_model,
+            "response_source": "ollama" if streamed_any_token else "local_fallback",
             "duration_ms": elapsed_ms,
         },
         ensure_ascii=False,
@@ -800,6 +816,7 @@ async def run_smarttax_chat(
     qdrant_sources: List[Dict[str, Any]] = []
     sql_tools_used: List[str] = []
     model_used = model
+    response_source = "local_fallback"
     suggested_theme: Optional[str] = None
     resolved_mode = mode_kapabilitas
     follow_ups: List[str] = []
@@ -818,6 +835,7 @@ async def run_smarttax_chat(
             resolved_mode = evt.get("mode_kapabilitas", mode_kapabilitas)
         elif evt["type"] == "done":
             model_used = evt.get("model_used", model)
+            response_source = evt.get("response_source", "local_fallback")
             follow_ups = evt.get("follow_ups", [])
 
     return {
@@ -827,6 +845,7 @@ async def run_smarttax_chat(
         "suggested_theme": suggested_theme,
         "follow_ups": follow_ups,
         "model_used": model_used,
+        "response_source": response_source,
         "qdrant_sources": qdrant_sources,
         "sql_tools_used": sql_tools_used,
     }
