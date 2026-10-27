@@ -301,8 +301,8 @@
     ]
   },
   {
-    "snapshot_id": "snap-1793094067507",
-    "timestamp": "2026-10-27T09:41:07.507199+00:00",
+    "snapshot_id": "snap-1793095497532",
+    "timestamp": "2026-10-27T10:04:57.532689+00:00",
     "trigger_event": "Kalibrasi Awal Korpus Lokal Bapenda (ChromaDB Seed)",
     "smarttax_iq_percentage": 75.61,
     "delta_change": 40.91,
