@@ -1,0 +1,139 @@
+[
+  {
+    "id": "GD-001",
+    "domain": "PBB-P2",
+    "tema_pajak": "PBB-P2",
+    "kategori": "Insentif Hunian & NJOPTKP",
+    "pertanyaan": "Bagaimana ketentuan batas NJOPTKP dan syarat pembebasan pokok PBB-P2 sebesar 100% untuk rumah tinggal Orang Pribadi di Provinsi DKI Jakarta?",
+    "kunci_jawaban": "Besaran NJOPTKP PBB-P2 di Provinsi DKI Jakarta ditetapkan sebesar Rp 60.000.000 untuk setiap Wajib Pajak atas 1 objek pajak dengan nilai NJOP tertinggi. Gubernur memberikan pembebasan pokok PBB-P2 sebesar 100% atas 1 objek rumah tinggal milik Orang Pribadi dengan NJOP sampai dengan Rp 2.000.000.000 (Rp 2 Miliar) yang tervalidasi NIK.",
+    "kata_kunci_wajib": [
+      "60.000.000",
+      "60 juta",
+      "100%",
+      "2.000.000.000",
+      "2 miliar",
+      "orang pribadi",
+      "nik"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 36-39 & Pergub Insentif PBB-P2 Pasal 4-9"
+  },
+  {
+    "id": "GD-002",
+    "domain": "JPB",
+    "tema_pajak": "PBB-P2",
+    "kategori": "Penilaian JPB Gedung Komersial & Denda Keterlambatan",
+    "pertanyaan": "Berapa tarif PBB-P2 untuk objek gedung perkantoran komersial (JPB Perkantoran) seperti SCBD Lot 9 dengan NJOP Rp 185 Miliar, dan bagaimana perhitungan sanksi denda keterlambatan per bulan?",
+    "kunci_jawaban": "Untuk objek komersial gedung perkantoran (JPB Perkantoran) seperti Gedung Perkantoran SCBD Lot 9 (NOP 31.74.010.003.008-0042.0) dengan NJOP Rp 185.000.000.000 dan pengurang NJOPTKP Rp 60.000.000, dikenakan tarif PBB-P2 sebesar 0,5% dengan pokok pajak Rp 369.880.000. Keterlambatan pembayaran setelah jatuh tempo (30 September) dikenakan sanksi administratif bunga denda sebesar 1% per bulan (maksimal 24 bulan), yaitu Rp 3.698.800 untuk 1 bulan tunggakan.",
+    "kata_kunci_wajib": [
+      "0,5%",
+      "60.000.000",
+      "369.880.000",
+      "1%",
+      "24 bulan",
+      "scbd"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 36-39 & Klasifikasi JPB Bangunan Bapenda DKI"
+  },
+  {
+    "id": "GD-003",
+    "domain": "PBJT",
+    "tema_pajak": "PBJT",
+    "kategori": "Tarif Restoran, Service Charge & Jatuh Tempo e-SPTPD",
+    "pertanyaan": "Berapa tarif PBJT atas Makanan dan/atau Minuman (Restoran), bagaimana perlakuan biaya pelayanan (service charge), serta kapan batas waktu pembayaran dan pelaporan e-SPTPD di DKI Jakarta?",
+    "kunci_jawaban": "Tarif PBJT atas Makanan dan/atau Minuman (Restoran, kafe, jasa boga), Jasa Perhotelan, dan Jasa Parkir di DKI Jakarta ditetapkan sebesar 10% dari jumlah pembayaran yang diterima, termasuk biaya pelayanan (service charge) sebagai dasar pengenaan pajak. Batas waktu jatuh tempo pembayaran adalah tanggal 15 bulan berikutnya dan pelaporan e-SPTPD paling lambat tanggal 20 bulan berikutnya.",
+    "kata_kunci_wajib": [
+      "10%",
+      "service charge",
+      "biaya pelayanan",
+      "tanggal 15",
+      "tanggal 20",
+      "e-sptpd"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 45-57 tentang PBJT"
+  },
+  {
+    "id": "GD-004",
+    "domain": "PBJT",
+    "tema_pajak": "PBJT",
+    "kategori": "Tarif Khusus Hiburan Tertentu 40%",
+    "pertanyaan": "Berapa tarif PBJT untuk Jasa Kesenian dan Hiburan umum dibandingkan dengan hiburan tertentu seperti diskotek, karaoke, kelab malam, bar, dan mandi uap/spa di DKI Jakarta?",
+    "kunci_jawaban": "Tarif umum PBJT Jasa Kesenian dan Hiburan di Provinsi DKI Jakarta adalah 10%. Namun khusus untuk Jasa Hiburan pada diskotek, karaoke, kelab malam, bar, dan mandi uap/spa ditetapkan tarif khusus sebesar 40% dari jumlah pembayaran yang diterima sesuai Pasal 53 s.d. Pasal 57 Perda Pajak Daerah DKI Jakarta.",
+    "kata_kunci_wajib": [
+      "10%",
+      "40%",
+      "diskotek",
+      "karaoke",
+      "kelab malam",
+      "spa"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 53-57 Ayat (3)"
+  },
+  {
+    "id": "GD-005",
+    "domain": "BPHTB",
+    "tema_pajak": "BPHTB",
+    "kategori": "Perhitungan BPHTB Jual Beli (AJB) & NPOPTKP Umum",
+    "pertanyaan": "Bagaimana rumus perhitungan BPHTB untuk transaksi Jual Beli (AJB) di DKI Jakarta dengan nilai transaksi Rp 3,5 Miliar, dan apa yang berlaku jika NPOP lebih rendah dari NJOP PBB-P2?",
+    "kunci_jawaban": "Rumus BPHTB DKI Jakarta adalah 5% x (NPOP - NPOPTKP). Untuk perolehan hak umum pertama (Jual Beli / AJB), besaran NPOPTKP adalah Rp 80.000.000. Dengan NPOP Rp 3.500.000.000 dikurangi NPOPTKP Rp 80.000.000, diperoleh NPOPKP Rp 3.420.000.000 dikalikan tarif 5% menghasilkan pokok BPHTB sebesar Rp 171.000.000. Apabila NPOP lebih rendah dari NJOP PBB-P2 tahun berjalan, maka dasar pengenaan yang digunakan adalah NJOP PBB-P2.",
+    "kata_kunci_wajib": [
+      "5%",
+      "80.000.000",
+      "3.420.000.000",
+      "171.000.000",
+      "njop pbb-p2",
+      "npoptkp"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 58-64 tentang BPHTB"
+  },
+  {
+    "id": "GD-006",
+    "domain": "BPHTB",
+    "tema_pajak": "BPHTB",
+    "kategori": "BPHTB Waris / Hibah Wasiat",
+    "pertanyaan": "Berapa besaran NPOPTKP dan perhitungan BPHTB untuk perolehan hak karena Waris atau Hibah Wasiat dalam garis keturunan lurus satu derajat di DKI Jakarta dengan nilai objek Rp 2,4 Miliar?",
+    "kunci_jawaban": "Untuk perolehan hak karena Waris atau Hibah Wasiat dalam hubungan keluarga sedarah lurus satu derajat (termasuk suami/istri), besaran NPOPTKP di DKI Jakarta ditetapkan paling sedikit Rp 350.000.000. Atas objek senilai Rp 2.400.000.000 dikurangi NPOPTKP Waris Rp 350.000.000, diperoleh NPOPKP Rp 2.050.000.000 x tarif 5% = Rp 102.500.000.",
+    "kata_kunci_wajib": [
+      "350.000.000",
+      "350 juta",
+      "5%",
+      "2.050.000.000",
+      "102.500.000",
+      "waris"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 58-64 Ayat (3)"
+  },
+  {
+    "id": "GD-007",
+    "domain": "REKLAME",
+    "tema_pajak": "REKLAME",
+    "kategori": "Tarif Pajak Reklame 25% & Kawasan Kendali Ketat",
+    "pertanyaan": "Berapa tarif Pajak Reklame dari Nilai Sewa Reklame (NSR) di DKI Jakarta dan apa ketentuan teknis penyelenggaraan reklame di Kawasan Kendali Ketat seperti Sudirman-Thamrin?",
+    "kunci_jawaban": "Tarif Pajak Reklame di Provinsi DKI Jakarta ditetapkan sebesar 25% dari Nilai Sewa Reklame (NSR) yang dihitung berdasarkan kelas jalan, luas bidang, ketinggian, dan durasi tayang. Pada Kawasan Kendali Ketat (Sudirman, Thamrin, Rasuna Said, Gatot Subroto), penyelenggaraan reklame wajib berbentuk media LED/Videotron yang menempel pada fasad bangunan (building-attached).",
+    "kata_kunci_wajib": [
+      "25%",
+      "nsr",
+      "nilai sewa reklame",
+      "kawasan kendali ketat",
+      "videotron",
+      "building-attached"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 65-71 tentang Pajak Reklame"
+  },
+  {
+    "id": "GD-008",
+    "domain": "PAT",
+    "tema_pajak": "PAT",
+    "kategori": "Rumus NPAT, Tarif 20% PAT & Kewajiban Meter AMR",
+    "pertanyaan": "Bagaimana dasar pengenaan Nilai Perolehan Air Tanah (NPAT), besaran tarif Pajak Air Tanah (PAT), serta kewajiban alat ukur bagi Wajib Pajak industri di DKI Jakarta?",
+    "kunci_jawaban": "Dasar pengenaan Pajak Air Tanah (PAT) di DKI Jakarta adalah Nilai Perolehan Air Tanah (NPAT) yang dihitung dari volume pengambilan air tanah (m3) dikalikan Harga Dasar Air (HDA) dan bobot komponen Sumber Daya Alam (zona konservasi/penurunan tanah) serta komponen peruntukan progresif. Tarif PAT ditetapkan sebesar 20% dari NPAT, dan setiap Wajib Pajak wajib memasang meter air otomatis (AMR) tersegel yang terhubung dengan sistem Bapenda DKI Jakarta.",
+    "kata_kunci_wajib": [
+      "20%",
+      "npat",
+      "harga dasar air",
+      "hda",
+      "meter air",
+      "zona konservasi"
+    ],
+    "referensi_regulasi": "Perda DKI Jakarta Pasal 72-77 tentang Pajak Air Tanah"
+  }
+]

@@ -34,13 +34,19 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 - **Database Relasional (SQLite 3 — `pajak_dki.sqlite`):**
   - Tabel `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai DPP/NJOP, pokok pajak, denda, dan status pembayaran.
   - Tabel `korpus_hukum_dki`: Menyimpan struktur pasal, ayat, bab/bagian, bunyi norma hukum, dan kaidah perumusan (*legal drafting*) untuk tiap kategori pajak.
-- **Vector Database (Qdrant — `jakarta_smarttax_kb`):** Menyimpan indeks vektor berdimensi `384` untuk pencarian semantik yang difilter ketat berdasarkan `tema_pajak` dan `doc_type` (`objek_pajak`, `regulasi`, `pasal_hukum`).
-- **Embedding Engine (`backend/app/embedder.py`):** Mendukung model lokal (`bge-m3` / HuggingFace `transformers`) dengan *fallback* deterministik 384-dimensi untuk lingkungan *offline*.
+- **Vector Database (ChromaDB `./smarttax_vectordb` + Qdrant `jakarta_smarttax_kb`):**
+  - **ChromaDB (`jakarta_smarttax_knowledge`, `hnsw:space = cosine`):** Mesin penyimpanan vektor persisten untuk 3 jalur ingesti RAG multi-sumber (`pdf_regulasi` melalui `pymupdf4llm` + `RecursiveCharacterTextSplitter`, `excel_data` melalui serialisasi baris semantik `pandas` + `openpyxl`, dan `user_reasoning` untuk *live few-shot learning* kasus pajak).
+  - **Qdrant (`jakarta_smarttax_kb`):** Menyimpan indeks vektor berdimensi `384` untuk pencarian semantik objek pajak dan korpus hukum.
+- **Embedding Engine (`backend/app/embedder.py`):** Menggunakan model `nomic-embed-text` yang terikat pada CPU (*CPU-bound embeddings*) agar VRAM GPU tetap 100% didedikasikan untuk inferensi LLM utama.
 
-### 4. AI / LLM Runtime (Ollama — Gemma & DeepSeek)
-- **Gemma (`gemma4:12b`):** Digunakan sebagai mesin utama untuk RAG cepat pada konsultasi tarif, rumus perhitungan, dan pengecekan data objek pajak.
-- **Model drafting (`OLLAMA_DRAFTING_MODEL`):** Secara default memakai `gemma4:12b` juga. Bisa diganti menjadi `deepseek-r1:8b` jika model tersebut sudah tersedia untuk perumusan dasar hukum baru (*legal drafting*). Mendukung pembagian beban paralel 2 PC di jaringan LAN (`OLLAMA_HOST` & `OLLAMA_SECONDARY_HOST`).
-- **Deterministic Grounded Fallback:** Jika layanan Ollama di mesin lokal belum aktif, backend otomatis menyajikan tabel data, bunyi pasal, dan kerangka *legal drafting* langsung dari SQLite & Qdrant.
+### 4. AI / LLM Runtime & Safeguard 8GB VRAM (MSI Infinite S3 — NVIDIA RTX 5060 Ti 8GB)
+- **Primary LLM (`gemma4:12b`):** Berjalan di atas Ollama lokal dengan batasan ketat memori 8GB VRAM:
+  - `OLLAMA_FLASH_ATTENTION=1` dan `OLLAMA_KV_CACHE_TYPE=q8_0`
+  - Parameter inferensi terkunci pada `num_ctx: 4096`, `temperature: 1.0`, `top_p: 0.95`, `top_k: 64`
+  - Prepend `<|think|>` pada *system prompt* untuk penalaran pajak multi-langkah, serta pembersihan otomatis blok `<|think|>` dari riwayat *multi-turn chat* sebelum pengiriman *request* guna mencegah *KV cache OOM*.
+- **AI Intelligence Benchmark & Audit Evidence Engine (`backend/app/eval_engine.py`):**
+  - Menghitung skor komposit **SmartTax IQ %**: `(0.40 * Golden Eval Accuracy) + (0.25 * Faithfulness) + (0.20 * Retrieval Precision) + (0.15 * Domain Coverage)` terhadap `golden_dataset.json` (8 kasus pajak daerah DKI Jakarta: PBB-P2, JPB, PBJT, BPHTB, Reklame, PAT, dan sanksi denda keterlambatan).
+  - Mencatat bukti *Before vs. After Delta* ke `./dashboard_intelligence_history.json`.
 
 ---
 
@@ -50,21 +56,29 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 .
 ├── backend/
 │   ├── app/
-│   │   ├── config.py           # Konfigurasi host Ollama (Gemma & DeepSeek), Qdrant, & CORS
-│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, reindex, & korpus-hukum
-│   │   ├── ollama_service.py   # Router kapabilitas (Tarif, Pasal, Perumusan) & streaming LLM
+│   │   ├── config.py           # Konfigurasi Ollama (RTX 5060 Ti 8GB safeguards), ChromaDB, & Qdrant
+│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, RAG ingestion, & evaluasi audit
+│   │   ├── rag_ingestion.py    # Multi-source ChromaDB RAG engine (PDF, Excel/CSV, User Reasoning)
+│   │   ├── eval_engine.py      # Mesin evaluasi RAGAS / TruLens Triad & Golden Dataset Benchmark
+│   │   ├── ollama_service.py   # Router kapabilitas, strip <|think|>, & streaming LLM
 │   │   ├── tax_db.py           # Skema SQLite (pajak_dki_jakarta & korpus_hukum_dki)
 │   │   ├── vector_store.py     # Qdrant client & filter payload (tema_pajak + doc_type)
-│   │   └── embedder.py         # Pembangkit vektor 384-dimensi lokal
+│   │   └── embedder.py         # CPU-bound nomic-embed-text & semantic tax synonym vector engine
+│   ├── golden_dataset.json     # 8 kasus benchmark resmi pajak daerah DKI Jakarta
 │   └── pyproject.toml          # Konfigurasi paket jakarta-smarttax-chatbot-ai-backend
 ├── frontend/
 │   ├── src/
+│   │   ├── components/
+│   │   │   └── IntelligenceAuditDashboard.tsx # Dashboard RAG Ingestion & Audit Evidence
+│   │   ├── types/
+│   │   │   └── audit.ts        # Kontrak tipe TypeScript untuk telemetri & audit evaluasi
 │   │   ├── config/
 │   │   │   └── smarttaxConfig.ts # Konfigurasi modular tema pajak, mode kapabilitas & prompt
 │   │   └── app/
+│   │       ├── audit/page.tsx  # Halaman langsung RAG & Intelligence Audit Dashboard (/audit)
 │   │       ├── layout.tsx      # Root layout, font Inter, & konfigurasi viewport mobile
-│   │       ├── page.tsx        # Komponen utama chat, pemilih mode, & pembaca stream NDJSON
-│   │       └── globals.css     # Variabel desain, layout desktop, & drawer responsif mobile
+│   │       ├── page.tsx        # Komponen utama chat, toggle Audit Terminal, & stream NDJSON
+│   │       └── globals.css     # Variabel desain Civic-Tech / Financial Terminal & layout responsif
 │   └── package.json            # Konfigurasi paket jakarta-smarttax-chatbot-ai-frontend
 └── docs/
     └── ENGINEERING_GUIDE.md    # Panduan teknis lengkap untuk Tim AI Jakarta SmartTax 2026
@@ -74,19 +88,25 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 
 ## Cara Menjalankan di Mesin Lokal
 
-### Ollama lokal (Gemma 4 12B)
+### Ollama Lokal (Gemma 4 12B — Safeguard RTX 5060 Ti 8GB VRAM)
 
-Pastikan Ollama berjalan di `http://localhost:11434` dan `ollama list` menampilkan
-`gemma4:12b`. Jika belum terpasang, jalankan `ollama pull gemma4:12b`.
-Backend otomatis membaca `backend/.env`; variabel lingkungan proses tetap lebih diutamakan.
+Pastikan Ollama dijalankan dengan *environment variable* optimasi memori VRAM 8GB berikut sebelum memuat model `gemma4:12b`:
 
 ```dotenv
+OLLAMA_FLASH_ATTENTION=1
+OLLAMA_KV_CACHE_TYPE=q8_0
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=gemma4:12b
 OLLAMA_DRAFTING_MODEL=gemma4:12b
+OLLAMA_EMBED_MODEL=nomic-embed-text
 OLLAMA_TIMEOUT=300
-OLLAMA_NUM_CTX=8192
-OLLAMA_THINK=false
+OLLAMA_NUM_CTX=4096
+OLLAMA_TEMPERATURE=1.0
+OLLAMA_TOP_P=0.95
+OLLAMA_TOP_K=64
+OLLAMA_THINK=true
+CHROMA_PERSIST_DIR=./smarttax_vectordb
+CHROMA_COLLECTION=jakarta_smarttax_knowledge
 ```
 
 Gemma secara default langsung menghasilkan jawaban (`OLLAMA_THINK=false`).

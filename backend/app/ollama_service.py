@@ -15,8 +15,12 @@ from .config import (
     OLLAMA_SECONDARY_URL,
     OLLAMA_TIMEOUT,
     OLLAMA_NUM_CTX,
+    OLLAMA_TEMPERATURE,
+    OLLAMA_TOP_P,
+    OLLAMA_TOP_K,
     OLLAMA_THINK,
 )
+from .rag_ingestion import chroma_store
 from .tax_db import (
     TAX_THEMES,
     daftar_tunggakan_pajak_dki,
@@ -283,12 +287,21 @@ def _generate_follow_ups(question: str, tema: str, mode_kapabilitas: str = "kons
     return (filtered or candidates)[:3]
 
 
+def strip_prior_thinking_blocks(content: str) -> str:
+    # Strip prior <|think|> and <think> blocks from multi-turn history to prevent KV cache OOM on 8GB VRAM.
+    cleaned = re.sub(r"<\|think\|>.*?<\|/think\|>", "", content, flags=re.DOTALL)
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL)
+    cleaned = cleaned.replace("<|think|>", "").replace("<|/think|>", "")
+    return cleaned.strip()
+
+
 def build_thematic_system_prompt(tema_pajak: str, mode_kapabilitas: str = "konsultasi") -> str:
     theme_info = TAX_THEMES.get(tema_pajak.upper(), TAX_THEMES["PBB-P2"])
     theme_code = theme_info["code"]
     theme_name = theme_info["name"]
 
     base_rules = (
+        f"<|think|>\n"
         f"Anda adalah **Jakarta SmartTax 2026** (dikembangkan oleh **Tim AI Jakarta SmartTax 2026** — Bapenda Provinsi DKI Jakarta) "
         f"pada kategori **{theme_name}**.\n"
         f"PRINSIP ANTI-HALUSINASI (STRICT GROUNDED RAG):\n"
@@ -394,6 +407,93 @@ def _run_local_pre_lookup(
     return tool_outputs
 
 
+def _build_conversational_greeting_reply(
+    question: str, tema: str, theme_name: str, mode_kapabilitas: str
+) -> Optional[str]:
+    q_clean = re.sub(r"[^a-zA-Z0-9\s]", " ", question.lower()).strip()
+    tokens = q_clean.split()
+    if not tokens or len(tokens) > 7:
+        return None
+
+    greeting_phrases = {
+        "halo",
+        "hai",
+        "hi",
+        "hello",
+        "pagi",
+        "siang",
+        "sore",
+        "malam",
+        "selamat pagi",
+        "selamat siang",
+        "selamat sore",
+        "selamat malam",
+        "assalamualaikum",
+        "permisi",
+        "tes",
+        "test",
+        "ping",
+        "apa kabar",
+        "siapa kamu",
+        "bisa bantu apa",
+    }
+    thanks_phrases = {"terima kasih", "makasih", "thanks", "thank you", "oke terima kasih"}
+
+    if q_clean in thanks_phrases or (len(tokens) <= 3 and any(t in {"makasih", "thanks"} for t in tokens)):
+        return (
+            f"Sama-sama! Senang dapat membantu Anda terkait **{theme_name}**. "
+            f"Silakan beri tahu saya jika ada simulasi perhitungan pajak, pengecekan NOP/NPWPD, atau pasal regulasi DKI Jakarta lainnya yang ingin Anda tanyakan."
+        )
+
+    is_greeting = q_clean in greeting_phrases or (
+        len(tokens) <= 4
+        and any(
+            t in {"halo", "hai", "hi", "hello", "pagi", "siang", "sore", "malam", "tes", "test", "assalamualaikum"}
+            for t in tokens
+        )
+        and not any(
+            kw in q_clean
+            for kw in ["tarif", "rumus", "pasal", "denda", "tunggakan", "njop", "npoptkp", "pbb", "pbjt", "bphtb", "reklame", "pat"]
+        )
+    )
+    if not is_greeting:
+        return None
+
+    examples_by_theme = {
+        "PBB-P2": (
+            "- *\"Berapa batas NJOPTKP dan syarat pembebasan 100% PBB-P2 rumah tinggal di DKI Jakarta?\"*\n"
+            "- *\"Tampilkan objek PBB-P2 DKI yang masih menunggak beserta dendanya\"*\n"
+            "- *\"Bagaimana perhitungan PBB-P2 untuk rumah tinggal dengan NJOP Rp 3,5 Miliar?\"*"
+        ),
+        "PBJT": (
+            "- *\"Berapa tarif PBJT Makanan/Minuman (Restoran), Perhotelan, dan Hiburan di DKI Jakarta?\"*\n"
+            "- *\"Daftar Wajib Pajak PBJT yang belum lunas beserta denda e-SPTPD\"*\n"
+            "- *\"Tampilkan bunyi pasal ruang lingkup 5 sektor objek PBJT di DKI Jakarta\"*"
+        ),
+        "BPHTB": (
+            "- *\"Berapa perbandingan NPOPTKP Jual Beli (Rp 80 Juta) vs Waris (Rp 350 Juta)?\"*\n"
+            "- *\"Hitung BPHTB Waris untuk rumah tinggal di Jakarta Selatan dengan NJOP Rp 2,4 Miliar\"*\n"
+            "- *\"Tampilkan bunyi pasal objek perolehan hak pada BPHTB DKI Jakarta\"*"
+        ),
+        "REKLAME": (
+            "- *\"Berapa tarif Pajak Reklame dari Nilai Sewa Reklame (NSR) dan aturan Kawasan Kendali Ketat?\"*\n"
+            "- *\"Cek SKPD Reklame yang belum lunas beserta rincian dendanya\"*\n"
+            "- *\"Tampilkan bunyi pasal penyelenggaraan reklame pada Kawasan Kendali Ketat DKI\"*"
+        ),
+        "PAT": (
+            "- *\"Bagaimana rumus NPAT, tarif 20% Pajak Air Tanah, dan kewajiban meter air AMR?\"*\n"
+            "- *\"Tampilkan SKPD Pajak Air Tanah yang masih menunggak di DKI Jakarta\"*\n"
+            "- *\"Tampilkan bunyi pasal objek Pajak Air Tanah dan pengecualian rumah tangga\"*"
+        ),
+    }
+    examples = examples_by_theme.get(tema, examples_by_theme["PBB-P2"])
+    return (
+        f"Halo! Saya **Asisten AI Jakarta SmartTax 2026** untuk layanan **{theme_name}** Bapenda Provinsi DKI Jakarta.\n\n"
+        f"Saat ini Anda berada pada kategori **{tema}**. Anda dapat langsung menanyakan simulasi perhitungan pajak, pengecekan tunggakan objek pajak, maupun bunyi pasal regulasi resmi. Contoh pertanyaan yang bisa Anda ketik:\n"
+        f"{examples}"
+    )
+
+
 def _build_local_deterministic_answer(
     question: str,
     tema_pajak: str,
@@ -401,12 +501,19 @@ def _build_local_deterministic_answer(
     tool_outputs: List[Dict[str, Any]],
     suggested_theme: Optional[str] = None,
     mode_kapabilitas: str = "konsultasi",
+    chroma_hits: Optional[List[Any]] = None,
 ) -> str:
     """Format a 100% grounded Markdown response from local SQLite and Qdrant results (Zero-Hallucination Engine)."""
     tema = tema_pajak.upper() if tema_pajak.upper() in TAX_THEMES else "PBB-P2"
     theme_name = TAX_THEMES[tema]["name"]
     lines: List[str] = []
     q_lower = question.lower()
+
+    greeting_reply = _build_conversational_greeting_reply(
+        question, tema, theme_name, mode_kapabilitas
+    )
+    if greeting_reply:
+        return greeting_reply
 
     if suggested_theme and suggested_theme in TAX_THEMES:
         target_name = TAX_THEMES[suggested_theme]["name"]
@@ -526,8 +633,23 @@ def _build_local_deterministic_answer(
                 if len(t["data"]) == 1 and r.get("keterangan"):
                     lines.append(f"\n> **Catatan Ketetapan:** {r['keterangan']} (Jatuh Tempo: `{r['jatuh_tempo']}`)")
 
+    if chroma_hits:
+        strong_chroma = [
+            h for h in chroma_hits if getattr(h, "similarity", 0.0) >= 0.32
+        ]
+        for h in strong_chroma[:2]:
+            src_type = getattr(h, "source_type", "")
+            if src_type == "user_reasoning":
+                lines.append(
+                    f"### Referensi Penalaran Kasus ({h.doc_name})\n{h.text}"
+                )
+            elif src_type in ("pdf_regulasi", "excel_data") and not lines:
+                lines.append(
+                    f"### Kutipan Korpus Pengetahuan ({h.doc_name})\n{h.text}"
+                )
+
     # 6. Ketentuan Tarif & Rumus
-    if any(k in q_lower for k in ["tarif", "rumus", "njoptkp", "npoptkp", "denda", "jatuh tempo", "aturan", "ketentuan", "insentif", "bebas", "hitung", "syarat"]) or not lines:
+    if any(k in q_lower for k in ["tarif", "rumus", "njoptkp", "npoptkp", "denda", "jatuh tempo", "aturan", "ketentuan", "insentif", "bebas", "hitung", "syarat", "berapa", "bagaimana", "jelaskan"]):
         for t in tool_outputs:
             if t["tool"] == "regulasi_dki_lokal":
                 for reg in t["data"]:
@@ -535,8 +657,8 @@ def _build_local_deterministic_answer(
 
     if not lines:
         lines.append(
-            f"Data yang Anda cari belum terdaftar pada arsip lokal **{tema}** Bapenda DKI Jakarta. "
-            f"Coba masukkan nomor identitas pajak, nama objek, topik pasal hukum, atau kecamatan di wilayah DKI Jakarta."
+            f"Pertanyaan Anda belum spesifik merujuk pada objek pajak atau topik regulasi di kategori **{theme_name}**.\n\n"
+            f"Silakan sebutkan **Nomor Objek Pajak (NOP/NPWPD)**, **nama gedung/wajib pajak**, **wilayah kecamatan**, atau tanyakan tentang **tarif, rumus perhitungan, tunggakan, maupun pasal regulasi {tema} DKI Jakarta**."
         )
 
     return "\n\n".join(lines)
@@ -560,6 +682,38 @@ async def stream_smarttax_chat(
     if resolved_mode == "perumusan_hukum" and model == DEFAULT_CHAT_MODEL:
         selected_model = DEEPSEEK_DRAFTING_MODEL
 
+    greeting_reply = _build_conversational_greeting_reply(
+        user_message, tema, theme_label, resolved_mode
+    )
+    if greeting_reply:
+        follow_ups = _generate_follow_ups(user_message, tema, mode_kapabilitas=resolved_mode)
+        words = re.split(r"(\s+)", greeting_reply)
+        batch = ""
+        for w in words:
+            batch += w
+            if len(batch) >= 24:
+                yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
+                batch = ""
+                await asyncio.sleep(0.008)
+        if batch:
+            yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
+        elapsed = round(time.perf_counter() - start_ts, 2)
+        yield json.dumps(
+            {
+                "type": "done",
+                "elapsed_sec": elapsed,
+                "model": selected_model,
+                "tema_pajak": tema,
+                "mode_kapabilitas": resolved_mode,
+                "mode_label": mode_info["label"],
+                "suggested_theme": None,
+                "follow_ups": follow_ups,
+                "response_source": "conversational_greeting",
+            },
+            ensure_ascii=False,
+        ) + "\n"
+        return
+
     status_stage_1 = {
         "konsultasi": f"Menelusuri arsip data & tarif {tema} Bapenda DKI Jakarta...",
         "pasal_hukum": f"Menelusuri korpus pasal & dasar hukum {tema} DKI Jakarta...",
@@ -580,6 +734,10 @@ async def stream_smarttax_chat(
     )
     if not qdrant_hits:
         qdrant_hits = vector_store.search(user_message, limit=6, tema_pajak=tema)
+
+    chroma_hits = chroma_store.query_knowledge(
+        user_message, top_k=4, tema_pajak=tema
+    )
 
     pre_tool_outputs = _run_local_pre_lookup(
         user_message, tema_pajak=tema, mode_kapabilitas=resolved_mode
@@ -607,6 +765,7 @@ async def stream_smarttax_chat(
             "mode_label": mode_info["label"],
             "suggested_theme": suggested_theme,
             "qdrant_sources": qdrant_hits,
+            "chroma_sources": [h.model_dump() for h in chroma_hits],
             "sql_tools_used": sql_tools_used,
         },
         ensure_ascii=False,
@@ -650,6 +809,16 @@ async def stream_smarttax_chat(
         f"KATEGORI PAJAK AKTIF: {theme_label} — PROVINSI DKI JAKARTA",
         f"MODE KAPABILITAS AKTIF: {mode_info['label']} ({resolved_mode})",
     ]
+    if chroma_hits:
+        context_blocks.append(
+            f"=== KORPUS PENGETAHUAN CHROMADB LOKAL ({tema} DKI JAKARTA) ===\n"
+            + "\n\n".join(
+                [
+                    f"[{h.source_type.upper()} | doc={h.doc_name} | sim={h.similarity}]\n{h.text}"
+                    for h in chroma_hits
+                ]
+            )
+        )
     if pre_tool_outputs:
         context_blocks.append(
             f"=== DATA TERSTRUKTUR & KORPUS HUKUM SQLITE LOKAL ({tema} DKI JAKARTA) ===\n"
@@ -677,7 +846,9 @@ async def stream_smarttax_chat(
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     for msg in history[-6:]:
         if msg.get("role") in ("user", "assistant") and msg.get("content"):
-            messages.append({"role": msg["role"], "content": msg["content"]})
+            clean_hist_content = strip_prior_thinking_blocks(str(msg["content"]))
+            if clean_hist_content:
+                messages.append({"role": msg["role"], "content": clean_hist_content})
     messages.append({"role": "user", "content": grounded_user_prompt})
 
     use_direct_cloud = bool(OLLAMA_API_KEY) and (
@@ -711,12 +882,12 @@ async def stream_smarttax_chat(
                     "model": api_model,
                     "messages": messages,
                     "stream": True,
-                    # Gemma can spend its output budget on thinking alone in long RAG requests.
                     **({"think": OLLAMA_THINK} if api_model.startswith("gemma4:") else {}),
                     "options": {
                         "num_ctx": OLLAMA_NUM_CTX,
-                        "temperature": 0.0,
-                        "top_p": 0.1,
+                        "temperature": OLLAMA_TEMPERATURE,
+                        "top_p": OLLAMA_TOP_P,
+                        "top_k": OLLAMA_TOP_K,
                         "repeat_penalty": 1.1,
                     },
                 },
@@ -779,6 +950,7 @@ async def stream_smarttax_chat(
             pre_tool_outputs,
             suggested_theme=suggested_theme,
             mode_kapabilitas=resolved_mode,
+            chroma_hits=chroma_hits,
         )
         words = re.split(r"(\s+)", deterministic_text)
         batch = ""

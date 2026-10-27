@@ -9,6 +9,8 @@ import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockw
 import { BuildingsIcon } from "@phosphor-icons/react/dist/csr/Buildings";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { CaretUpIcon } from "@phosphor-icons/react/dist/csr/CaretUp";
+import { ChartLineUpIcon } from "@phosphor-icons/react/dist/csr/ChartLineUp";
+import { ChatTextIcon } from "@phosphor-icons/react/dist/csr/ChatText";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { CoffeeIcon } from "@phosphor-icons/react/dist/csr/Coffee";
 import { CommandIcon } from "@phosphor-icons/react/dist/csr/Command";
@@ -21,7 +23,9 @@ import { NotePencilIcon } from "@phosphor-icons/react/dist/csr/NotePencil";
 import { PencilSimpleIcon } from "@phosphor-icons/react/dist/csr/PencilSimple";
 import { SidebarSimpleIcon } from "@phosphor-icons/react/dist/csr/SidebarSimple";
 import { StopIcon } from "@phosphor-icons/react/dist/csr/Stop";
+import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
+import IntelligenceAuditDashboard from "@/components/IntelligenceAuditDashboard";
 import {
   CAPABILITY_MODES,
   CapabilityModeCode,
@@ -446,6 +450,7 @@ function FormattedMarkdown({
 
 export default function TaxAssistantView() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [activeView, setActiveView] = useState<"chat" | "audit">("chat");
   const [selectedModel, setSelectedModel] = useState<string>("gemma4:12b");
 
   useEffect(() => {
@@ -1011,10 +1016,13 @@ export default function TaxAssistantView() {
         </div>
 
         <button
-          onClick={() => createNewChat()}
-          className="session-item"
+          onClick={() => {
+            setActiveView("chat");
+            createNewChat();
+          }}
+          className={`session-item ${activeView === "chat" ? "active" : ""}`}
           style={{
-            marginBottom: "14px",
+            marginBottom: "6px",
             minWidth: "240px",
             fontWeight: 500,
             color: "#ececec",
@@ -1037,6 +1045,46 @@ export default function TaxAssistantView() {
               <ThemeIcon code={currentTheme} color={themeConfig.iconColor} />
             </div>
             <span>Pajak Daerah DKI Jakarta</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveView("audit");
+            closeSidebarOnMobile();
+          }}
+          className={`session-item ${activeView === "audit" ? "active" : ""}`}
+          style={{
+            marginBottom: "14px",
+            minWidth: "240px",
+            fontWeight: 600,
+            color: activeView === "audit" ? "#ffffff" : "#d4d4d8",
+            border:
+              activeView === "audit"
+                ? "1px solid #1d4ed8"
+                : "1px solid rgba(255,255,255,0.08)",
+            background:
+              activeView === "audit"
+                ? "rgba(29, 78, 216, 0.22)"
+                : "rgba(255,255,255,0.03)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "26px",
+                height: "26px",
+                borderRadius: "6px",
+                background: "#1d4ed8",
+                color: "#ffffff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <TerminalWindowIcon size={15} weight="bold" aria-hidden="true" />
+            </div>
+            <span>RAG & Audit Dashboard</span>
           </div>
         </button>
 
@@ -1063,11 +1111,12 @@ export default function TaxAssistantView() {
           }}
         >
           {sessions.map((s) => {
-            const active = s.id === activeSessionId;
+            const active = s.id === activeSessionId && activeView === "chat";
             return (
               <div
                 key={s.id}
                 onClick={() => {
+                  setActiveView("chat");
                   setActiveSessionId(s.id);
                   closeSidebarOnMobile();
                 }}
@@ -1184,54 +1233,94 @@ export default function TaxAssistantView() {
 
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCmdOpen(true);
-              setCmdQuery("");
-            }}
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "8px",
-              padding: "4px 10px",
-              fontSize: "12px",
-              color: "#8e8e8e",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              whiteSpace: "nowrap",
-            }}
-            title="Buka Pencarian Cepat"
-          >
-            <span>Cari</span>
-            <kbd
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={() => setActiveView(activeView === "audit" ? "chat" : "audit")}
               style={{
-                fontSize: "11px",
-                color: "#b4b4b4",
-                fontFamily: "inherit",
-                display: "inline-flex",
+                background: activeView === "audit" ? "#1d4ed8" : "rgba(255,255,255,0.04)",
+                border: activeView === "audit" ? "1px solid #2563eb" : "1px solid rgba(255,255,255,0.12)",
+                borderRadius: "6px",
+                padding: "5px 10px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: activeView === "audit" ? "#ffffff" : "#e4e4e7",
+                cursor: "pointer",
+                display: "flex",
                 alignItems: "center",
-                gap: "2px",
+                gap: "6px",
+                whiteSpace: "nowrap",
               }}
+              title="Buka Local RAG & AI Intelligence Audit Dashboard"
             >
-              <CommandIcon size={12} aria-hidden="true" />K
-            </kbd>
-          </button>
+              {activeView === "audit" ? (
+                <>
+                  <ChatTextIcon size={14} weight="bold" aria-hidden="true" />
+                  <span>Asisten Chat</span>
+                </>
+              ) : (
+                <>
+                  <ChartLineUpIcon size={14} weight="bold" aria-hidden="true" />
+                  <span>RAG & Audit Terminal</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCmdOpen(true);
+                setCmdQuery("");
+              }}
+              style={{
+                background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "8px",
+                padding: "4px 10px",
+                fontSize: "12px",
+                color: "#8e8e8e",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                whiteSpace: "nowrap",
+              }}
+              title="Buka Pencarian Cepat"
+            >
+              <span>Cari</span>
+              <kbd
+                style={{
+                  fontSize: "11px",
+                  color: "#b4b4b4",
+                  fontFamily: "inherit",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "2px",
+                }}
+              >
+                <CommandIcon size={12} aria-hidden="true" />K
+              </kbd>
+            </button>
+          </div>
         </header>
 
-        <div
-          ref={scrollContainerRef}
-          onScroll={handleScrollArea}
-          key={`${activeSessionId}-${currentTheme}-${capabilityMode}`}
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
+        {activeView === "audit" ? (
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            <IntelligenceAuditDashboard onBackToChat={() => setActiveView("chat")} />
+          </div>
+        ) : (
+          <>
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleScrollArea}
+              key={`${activeSessionId}-${currentTheme}-${capabilityMode}`}
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
           {isChatEmpty ? (
             <div className="empty-hero">
               <h2 className="hero-title">{themeConfig.greeting}</h2>
@@ -1867,6 +1956,8 @@ export default function TaxAssistantView() {
             akses internet.
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Quick Search & Theme Switcher Dialog (Cmd+K) */}
