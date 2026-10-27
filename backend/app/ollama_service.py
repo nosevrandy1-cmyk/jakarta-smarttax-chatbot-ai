@@ -360,42 +360,103 @@ def _run_local_pre_lookup(
                 {"tool": "telusuri_pasal_hukum_dki", "tema": tema, "data": pasal_rows}
             )
 
-    if any(k in q_lower for k in ["tunggakan", "belum lunas", "menunggak", "denda", "telat", "terlambat"]):
+    # 1. Drafting Engine
+    if mode_kapabilitas == "perumusan_hukum" or any(k in q_lower for k in DRAFTING_KEYWORDS):
+        draft_pack = susun_rancangan_hukum_dki(topik_perumusan=question, tema_pajak=tema)
+        tool_outputs.append(
+            {"tool": "susun_rancangan_hukum_dki", "tema": tema, "data": draft_pack}
+        )
+
+    # 2. Legal provisions lookup
+    if (
+        mode_kapabilitas in ("pasal_hukum", "perumusan_hukum")
+        or any(k in q_lower for k in LEGAL_BASIS_KEYWORDS)
+    ):
+        pasal_rows = json.loads(telusuri_pasal_hukum_dki(kata_kunci=question, tema_pajak=tema))
+        if pasal_rows:
+            tool_outputs.append(
+                {"tool": "telusuri_pasal_hukum_dki", "tema": tema, "data": pasal_rows}
+            )
+
+    # 3. Arrears query (ONLY if explicitly asking for arrears list / who is in arrears)
+    is_arrears_list_query = any(
+        k in q_lower
+        for k in [
+            "daftar tunggakan",
+            "siapa yang menunggak",
+            "siapa menunggak",
+            "daftar belum lunas",
+            "tampilkan tunggakan",
+            "data tunggakan",
+            "rekap tunggakan",
+            "list penunggak",
+            "siapa belum bayar",
+            "objek yang menunggak",
+            "objek menunggak",
+        ]
+    )
+    if is_arrears_list_query:
         res = json.loads(daftar_tunggakan_pajak_dki(tema_pajak=tema))
         tool_outputs.append({"tool": "daftar_tunggakan_pajak_dki", "tema": tema, "data": res})
 
-    if any(k in q_lower for k in ["rekap", "total", "realisasi", "ringkasan", "kecamatan", "kelurahan", "kota", "wilayah"]):
+    # 4. Regional recap query
+    if any(k in q_lower for k in ["rekapitulasi", "rekap wilayah", "realisasi penerimaan", "ringkasan per wilayah", "rekap per kecamatan"]):
         res = json.loads(rekapitulasi_pajak_dki(tema_pajak=tema))
         tool_outputs.append({"tool": "rekapitulasi_pajak_dki", "tema": tema, "data": res})
 
+    # 5. Specific SPPT / Taxpayer Record Search
+    # Check if query is looking for a specific taxpayer, building name, or NOP/NPWPD
+    is_rule_or_rate_query = any(
+        k in q_lower
+        for k in [
+            "tarif", "berapa", "rumus", "sanksi", "denda", "bunga", "aturan", "ketentuan",
+            "pasal", "hukum", "perda", "pergub", "syarat", "bebas", "pembebasan",
+            "njoptkp", "npoptkp", "cara hitung", "contoh hitung", "jatuh tempo", "bagaimana", "apa", "jelaskan",
+        ]
+    )
+
+    has_specific_id = bool(re.search(r"\b(?:\d{4,}|sppt|nop|npwpd|skpd|sspd)\b", q_lower))
+    explicit_search_intent = any(
+        k in q_lower
+        for k in ["cari data", "cek data", "tampilkan objek", "lihat objek", "cek nop", "cek status", "status bayar", "cek tagihan"]
+    )
+
     theme_rows = get_all_sppt_records(tema_pajak=tema)
     matched_rows = []
-    for r in theme_rows:
-        for field in (
-            r["nomor_identitas"],
-            r["nama_wp"],
-            r["nama_objek"],
-            r["kelurahan"],
-            r["kecamatan"],
-            r["kota_administrasi"],
-            r["alamat_objek"],
-            r["kategori_subjek"],
-        ):
-            tokens = [
-                t
-                for t in re.split(r"[\s,\.\-/()]+", field.lower())
-                if len(t) >= 3 and t not in ("jalan", "jakarta", "dki", "dan", "pajak", "pbjt", "pbb", "kota", "adm")
-            ]
-            if any(t in q_lower for t in tokens):
-                matched_rows.append(r)
-                break
 
-    if (
-        not matched_rows
-        and mode_kapabilitas == "konsultasi"
-        and any(k in q_lower for k in ["tampilkan", "lihat", "daftar", "semua", "cek", "contoh", "data", "objek"])
-    ):
-        matched_rows = theme_rows
+    # Only perform taxpayer record matching if user provides an ID, or explicitly asks for an object,
+    # and is NOT purely asking about statutory rules/rates
+    if has_specific_id or explicit_search_intent or not is_rule_or_rate_query:
+        banned_tokens = {
+            "jalan", "jakarta", "dki", "dan", "pajak", "pbjt", "pbb", "kota", "adm",
+            "makanan", "minuman", "restoran", "hotel", "hiburan", "parkir", "gedung",
+            "tanah", "bangunan", "rumah", "reklame", "air", "listrik", "tenaga",
+            "berapa", "tarif", "sanksi", "denda", "bunga", "aturan", "hukum", "pasal",
+        }
+        for r in theme_rows:
+            for field in (
+                r["nomor_identitas"],
+                r["nama_wp"],
+                r["nama_objek"],
+                r["kelurahan"],
+                r["kecamatan"],
+                r["alamat_objek"],
+            ):
+                tokens = [
+                    t
+                    for t in re.split(r"[\s,\.\-/()]+", field.lower())
+                    if len(t) >= 4 and t not in banned_tokens
+                ]
+                if any(t in q_lower for t in tokens):
+                    matched_rows.append(r)
+                    break
+
+        if (
+            not matched_rows
+            and mode_kapabilitas == "konsultasi"
+            and explicit_search_intent
+        ):
+            matched_rows = theme_rows
 
     if matched_rows:
         tool_outputs.append({"tool": "cari_data_pajak_dki", "tema": tema, "data": matched_rows})
@@ -581,7 +642,80 @@ def _build_local_deterministic_answer(
                     + f"\n- **Kaidah Perumusan / Implikasi Regulasi:** {p['kaidah_perumusan']}"
                 )
 
-    # 3. Data Tunggakan
+    # 3. Ketentuan Sanksi Keterlambatan & Denda (Jika ditanyakan oleh Wajib Pajak)
+    is_penalty_query = any(k in q_lower for k in ["sanksi", "denda", "bunga", "telat", "terlambat"])
+    if is_penalty_query:
+        if tema == "PBB-P2":
+            lines.append(
+                "### Ketentuan Sanksi Keterlambatan PBB-P2 — Provinsi DKI Jakarta\n"
+                "Berdasarkan **Peraturan Daerah Provinsi DKI Jakarta No. 1 Tahun 2024 tentang Pajak Daerah dan Retribusi Daerah**:\n\n"
+                "- **Sanksi Administratif Bunga**: Wajib Pajak yang membayar PBB-P2 setelah melewati tanggal jatuh tempo dikenakan sanksi administratif berupa bunga sebesar **1% (satu persen) per bulan** yang dihitung dari pokok pajak terutang yang belum dibayar.\n"
+                "- **Batas Waktu Maksimal Perhitungan**: Bunga sanksi keterlambatan dihitung untuk jangka waktu paling lama **24 (dua puluh empat) bulan**.\n"
+                "- **Jatuh Tempo Pembayaran**: Mengacu pada tanggal yang tertera pada SPPT PBB-P2 (umumnya jatuh tempo 31 Agustus s.d. 30 September setiap tahun pajak).\n"
+                "- **Kanal Pembayaran Resmi**: Pembayaran pokok dan denda dapat dilakukan via teller Bank DKI, ATM, mobile banking bank persepsi, e-commerce, atau gerai ritel resmi Bapenda DKI Jakarta."
+            )
+        elif tema == "PBJT":
+            lines.append(
+                "### Ketentuan Sanksi Keterlambatan PBJT — Provinsi DKI Jakarta\n"
+                "Berdasarkan **Peraturan Daerah Provinsi DKI Jakarta No. 1 Tahun 2024**:\n\n"
+                "- **Sanksi Keterlambatan Pembayaran**: Dikenakan sanksi bunga sebesar **1% per bulan** (maksimal 24 bulan) atas pajak terutang yang belum dilunasi setelah jatuh tempo tanggal 15 bulan berikutnya.\n"
+                "- **Sanksi Keterlambatan Pelaporan e-SPTPD**: Wajib Pajak yang terlambat menyampaikan laporan e-SPTPD melewati tanggal 20 bulan berikutnya dikenakan sanksi administratif denda sesuai regulasi perpajakan daerah.\n"
+                "- **Sistem Pelaporan**: Pelaporan dan pembuatan kode bayar wajib dilakukan secara daring melalui sistem e-SPTPD Bapenda DKI Jakarta."
+            )
+        elif tema == "BPHTB":
+            lines.append(
+                "### Ketentuan Sanksi BPHTB — Provinsi DKI Jakarta\n"
+                "Berdasarkan ketentuan perpajakan daerah Provinsi DKI Jakarta:\n\n"
+                "- **Sanksi Administratif Bunga**: Dikenakan sanksi bunga **1% per bulan** (maksimal 24 bulan) apabila diterbitkan Surat Ketetapan Pajak Daerah Kurang Bayar (SKPDKB) hasil pemeriksaan/validasi SSPD BPHTB.\n"
+                "- **Ketentuan Validasi**: SSPD BPHTB wajib divalidasi dan dilunasi sebelum penandatanganan akta oleh PPAT/Notaris atau pendaftaran hak atas tanah di Kantor Pertanahan (BPN)."
+            )
+        elif tema == "REKLAME":
+            lines.append(
+                "### Ketentuan Sanksi Pajak Reklame — Provinsi DKI Jakarta\n"
+                "Berdasarkan ketentuan Pajak Reklame DKI Jakarta:\n\n"
+                "- **Sanksi Bunga Keterlambatan**: Dikenakan bunga **1% per bulan** (maksimal 24 bulan) atas SKPD Pajak Reklame yang tidak dilunasi hingga lewat jatuh tempo.\n"
+                "- **Penindakan Media Reklame**: Penyelenggaraan reklame tanpa pelunasan pajak dan izin berisiko dikenakan stiker peringatan hingga penertiban/pembongkaran oleh Bapenda dan Satpol PP DKI Jakarta."
+            )
+        elif tema == "PAT":
+            lines.append(
+                "### Ketentuan Sanksi Pajak Air Tanah (PAT) — Provinsi DKI Jakarta\n"
+                "Berdasarkan ketentuan Pajak Air Tanah DKI Jakarta:\n\n"
+                "- **Sanksi Bunga Keterlambatan**: Bunga **1% per bulan** (maksimal 24 bulan) atas keterlambatan pelunasan SKPD Air Tanah.\n"
+                "- **Pelanggaran Alat Ukur (Meter Air AMR)**: Wajib Pajak yang tidak memasang meter air standar atau merusak segel dikenakan penetapan volume air secara jabatan dan pencabutan izin SIPA."
+            )
+
+    # 4. Ketentuan Tarif & Rumus Perhitungan
+    is_tariff_or_formula = any(
+        k in q_lower
+        for k in [
+            "tarif", "berapa", "rumus", "persen", "hitung", "njoptkp", "npoptkp",
+            "bebas", "pembebasan", "aturan", "ketentuan", "syarat", "insentif", "bagaimana", "apa"
+        ]
+    )
+    if is_tariff_or_formula:
+        for t in tool_outputs:
+            if t["tool"] == "regulasi_dki_lokal":
+                for reg in t["data"]:
+                    if reg["content"] not in lines:
+                        lines.append(reg["content"])
+
+    # 5. ChromaDB Retrieved Knowledge (Expert Reasoning / Regulation Chunks)
+    if chroma_hits:
+        strong_chroma = [
+            h for h in chroma_hits if getattr(h, "similarity", 0.0) >= 0.28
+        ]
+        for h in strong_chroma[:2]:
+            src_type = getattr(h, "source_type", "")
+            if src_type == "user_reasoning":
+                lines.append(
+                    f"### Referensi Penalaran Kasus ({h.doc_name})\n{h.text}"
+                )
+            elif src_type in ("pdf_regulasi", "excel_data") and not is_penalty_query:
+                lines.append(
+                    f"### Kutipan Dokumen Pengetahuan ({h.doc_name})\n{h.text}"
+                )
+
+    # 6. Data Tunggakan (Hanya jika pengguna secara eksplisit meminta daftar/siapa penunggak)
     for t in tool_outputs:
         if t["tool"] == "daftar_tunggakan_pajak_dki":
             d = t["data"]
@@ -600,7 +734,7 @@ def _build_local_deterministic_answer(
                         f"| `{item['nomor_identitas']}` | **{item['nama_wp']}** ({item['nama_objek']}) | {item['kecamatan']}, {item['kota_administrasi']} | {item['masa_atau_tahun_pajak']} | Rp {item['pokok_pajak_rp']:,} | Rp {item['denda_rp']:,} | **Rp {item['total_tagihan_rp']:,}** |"
                     )
 
-    # 4. Rekapitulasi Wilayah
+    # 7. Rekapitulasi Wilayah
     for t in tool_outputs:
         if t["tool"] == "rekapitulasi_pajak_dki":
             d = t["data"]
@@ -620,9 +754,9 @@ def _build_local_deterministic_answer(
                     f"| {w['kota_administrasi']} | {w['kecamatan']} | {w['jumlah_objek']} | Rp {w['total_ketetapan_rp']:,} | Rp {w['realisasi_lunas_rp']:,} | **Rp {w['total_sisa_tagihan_rp']:,}** |"
                 )
 
-    # 5. Pencarian Objek Pajak
+    # 8. Pencarian Objek Pajak Spesifik
     for t in tool_outputs:
-        if t["tool"] == "cari_data_pajak_dki" and t["data"] and not lines:
+        if t["tool"] == "cari_data_pajak_dki" and t["data"]:
             lines.append(f"### Rincian Objek {theme_name} — DKI Jakarta")
             lines.append("| Nomor Identitas | Wajib Pajak & Objek | Wilayah DKI | DPP / NJOP | Pokok Pajak | Denda | Status |")
             lines.append("| :--- | :--- | :--- | ---: | ---: | ---: | :--- |")
@@ -632,28 +766,6 @@ def _build_local_deterministic_answer(
                 )
                 if len(t["data"]) == 1 and r.get("keterangan"):
                     lines.append(f"\n> **Catatan Ketetapan:** {r['keterangan']} (Jatuh Tempo: `{r['jatuh_tempo']}`)")
-
-    if chroma_hits:
-        strong_chroma = [
-            h for h in chroma_hits if getattr(h, "similarity", 0.0) >= 0.32
-        ]
-        for h in strong_chroma[:2]:
-            src_type = getattr(h, "source_type", "")
-            if src_type == "user_reasoning":
-                lines.append(
-                    f"### Referensi Penalaran Kasus ({h.doc_name})\n{h.text}"
-                )
-            elif src_type in ("pdf_regulasi", "excel_data") and not lines:
-                lines.append(
-                    f"### Kutipan Korpus Pengetahuan ({h.doc_name})\n{h.text}"
-                )
-
-    # 6. Ketentuan Tarif & Rumus
-    if any(k in q_lower for k in ["tarif", "rumus", "njoptkp", "npoptkp", "denda", "jatuh tempo", "aturan", "ketentuan", "insentif", "bebas", "hitung", "syarat", "berapa", "bagaimana", "jelaskan"]):
-        for t in tool_outputs:
-            if t["tool"] == "regulasi_dki_lokal":
-                for reg in t["data"]:
-                    lines.append(reg["content"])
 
     if not lines:
         lines.append(
