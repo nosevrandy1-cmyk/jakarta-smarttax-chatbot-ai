@@ -687,14 +687,34 @@ async def stream_smarttax_chat(
     )
     if greeting_reply:
         follow_ups = _generate_follow_ups(user_message, tema, mode_kapabilitas=resolved_mode)
+
+        yield json.dumps(
+            {"type": "status", "text": f"Menganalisis sapaan & memuat layanan {tema}..."},
+            ensure_ascii=False,
+        ) + "\n"
+        await asyncio.sleep(0.15)
+
+        thinking_lines = [
+            f"• Mengidentifikasi maksud pesan: salam / sapaan pembuka konsultasi.\n",
+            f"• Menyiapkan ruang konsultasi aktif: {theme_label} (Provinsi DKI Jakarta).\n",
+            f"• Memuat panduan topik perpajakan dan contoh pertanyaan resmi yang relevan.\n",
+        ]
+        for line in thinking_lines:
+            words = re.split(r"(\s+)", line)
+            for w in words:
+                if w:
+                    yield json.dumps({"type": "thinking", "delta": w}, ensure_ascii=False) + "\n"
+                    await asyncio.sleep(0.015)
+        await asyncio.sleep(0.2)
+
         words = re.split(r"(\s+)", greeting_reply)
         batch = ""
-        for w in words:
+        for idx, w in enumerate(words):
             batch += w
-            if len(batch) >= 24:
+            if idx % 3 == 0 or idx == len(words) - 1:
                 yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
                 batch = ""
-                await asyncio.sleep(0.008)
+                await asyncio.sleep(0.016)
         if batch:
             yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
         elapsed = round(time.perf_counter() - start_ts, 2)
@@ -772,6 +792,26 @@ async def stream_smarttax_chat(
     ) + "\n"
 
     if suggested_theme:
+        target_name = TAX_THEMES[suggested_theme]["name"]
+        yield json.dumps(
+            {"type": "status", "text": f"Mendeteksi kesesuaian kategori: {suggested_theme}..."},
+            ensure_ascii=False,
+        ) + "\n"
+        await asyncio.sleep(0.15)
+
+        thinking_lines = [
+            f"• Menelaah konteks pertanyaan: topik merujuk pada {target_name}.\n",
+            f"• Kategori yang sedang aktif saat ini adalah {theme_label}.\n",
+            f"• Menyiapkan rekomendasi pengalihan ke ruang konsultasi {suggested_theme}.\n",
+        ]
+        for line in thinking_lines:
+            words = re.split(r"(\s+)", line)
+            for w in words:
+                if w:
+                    yield json.dumps({"type": "thinking", "delta": w}, ensure_ascii=False) + "\n"
+                    await asyncio.sleep(0.015)
+        await asyncio.sleep(0.2)
+
         deterministic_text = _build_local_deterministic_answer(
             user_message,
             tema,
@@ -784,10 +824,12 @@ async def stream_smarttax_chat(
         batch = ""
         for idx, w in enumerate(words):
             batch += w
-            if idx % 5 == 0 or idx == len(words) - 1:
+            if idx % 3 == 0 or idx == len(words) - 1:
                 yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
                 batch = ""
-                await asyncio.sleep(0.012)
+                await asyncio.sleep(0.016)
+        if batch:
+            yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
 
         elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
         yield json.dumps(
@@ -943,6 +985,26 @@ async def stream_smarttax_chat(
         logger.warning("Ollama request failed for %s at %s: %s", api_model, base_url, exc)
 
     if not streamed_any_token:
+        yield json.dumps(
+            {"type": "status", "text": f"Menelaah dasar hukum & ketentuan {tema} DKI Jakarta..."},
+            ensure_ascii=False,
+        ) + "\n"
+        await asyncio.sleep(0.18)
+
+        topic_snippet = (user_message[:55] + "...") if len(user_message) > 55 else user_message
+        thinking_lines = [
+            f"• Menelaah pertanyaan wajib pajak: \"{topic_snippet}\"\n",
+            f"• Memeriksa kecocokan data ketetapan, tabel tarif, dan korpus regulasi resmi {tema}.\n",
+            f"• Memvalidasi dasar hukum dan menyusun rincian informasi tanpa halusinasi.\n",
+        ]
+        for line in thinking_lines:
+            words = re.split(r"(\s+)", line)
+            for w in words:
+                if w:
+                    yield json.dumps({"type": "thinking", "delta": w}, ensure_ascii=False) + "\n"
+                    await asyncio.sleep(0.015)
+        await asyncio.sleep(0.25)
+
         deterministic_text = _build_local_deterministic_answer(
             user_message,
             tema,
@@ -956,10 +1018,12 @@ async def stream_smarttax_chat(
         batch = ""
         for idx, w in enumerate(words):
             batch += w
-            if idx % 6 == 0 or idx == len(words) - 1:
+            if idx % 3 == 0 or idx == len(words) - 1:
                 yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
                 batch = ""
-                await asyncio.sleep(0.014)
+                await asyncio.sleep(0.016)
+        if batch:
+            yield json.dumps({"type": "token", "delta": batch}, ensure_ascii=False) + "\n"
 
     elapsed_ms = int((time.perf_counter() - start_ts) * 1000)
     yield json.dumps(

@@ -1532,6 +1532,7 @@ export default function TaxAssistantView() {
 
                         {m.thinking && (
                           <details
+                            open={m.isStreaming}
                             style={{
                               marginBottom: "10px",
                               background: "rgba(255,255,255,0.03)",
@@ -1542,14 +1543,29 @@ export default function TaxAssistantView() {
                               color: "#9ca3af",
                             }}
                           >
-                            <summary className="thinking-summary">
+                            <summary
+                              className="thinking-summary"
+                              style={{
+                                cursor: "pointer",
+                                userSelect: "none",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
                               <CaretRightIcon size={13} className="thinking-caret" aria-hidden="true" />
-                              Penalaran
+                              <span style={{ fontWeight: 600, color: "#d4d4d8" }}>
+                                {m.isStreaming && !m.content
+                                  ? "Sedang menelaah regulasi & dasar hukum..."
+                                  : "Alur Penalaran"}
+                              </span>
                             </summary>
                             <div
                               style={{
                                 marginTop: "6px",
                                 whiteSpace: "pre-wrap",
+                                lineHeight: 1.55,
+                                color: "#a1a1aa",
                               }}
                             >
                               {m.thinking}
@@ -1722,10 +1738,17 @@ export default function TaxAssistantView() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  sendPrompt();
+                  if (!isGenerating) {
+                    sendPrompt();
+                  }
                 }
               }}
-              placeholder={themeConfig.placeholder}
+              disabled={isGenerating}
+              placeholder={
+                isGenerating
+                  ? "Jakarta SmartTax sedang menelaah & merumuskan jawaban..."
+                  : themeConfig.placeholder
+              }
               style={{
                 width: "100%",
                 background: "transparent",
