@@ -13,7 +13,6 @@ import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { CaretUpIcon } from "@phosphor-icons/react/dist/csr/CaretUp";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { CoffeeIcon } from "@phosphor-icons/react/dist/csr/Coffee";
-import { CommandIcon } from "@phosphor-icons/react/dist/csr/Command";
 import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
 import { DropIcon } from "@phosphor-icons/react/dist/csr/Drop";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
@@ -1152,41 +1151,6 @@ export default function TaxAssistantView() {
 
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCmdOpen(true);
-              setCmdQuery("");
-            }}
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "8px",
-              padding: "4px 10px",
-              fontSize: "12px",
-              color: "#8e8e8e",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              whiteSpace: "nowrap",
-            }}
-            title="Buka Pencarian Cepat"
-          >
-            <span>Cari</span>
-            <kbd
-              style={{
-                fontSize: "11px",
-                color: "#b4b4b4",
-                fontFamily: "inherit",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "2px",
-              }}
-            >
-              <CommandIcon size={12} aria-hidden="true" />K
-            </kbd>
-          </button>
         </header>
 
         <div
