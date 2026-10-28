@@ -1,5 +1,6 @@
 "use client";
 
+import RenameChatDialog from "@/components/RenameChatDialog";
 import AnswerReferences, { type AnswerReference } from "@/components/AnswerReferences";
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowBendDownRightIcon } from "@phosphor-icons/react/dist/csr/ArrowBendDownRight";
@@ -153,6 +154,7 @@ interface ChatMessage {
 }
 
 interface ChatSession {
+  titleEdited?: boolean;
   id: string;
   title: string;
   theme: TaxThemeCode;
@@ -372,6 +374,7 @@ export default function TaxAssistantView() {
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
   const [cmdQuery, setCmdQuery] = useState<string>("");
 
+  const [renamingChat, setRenamingChat] = useState<{ id: string; title: string } | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([
     {
       id: "default-session",
@@ -691,7 +694,7 @@ export default function TaxAssistantView() {
         return {
           ...s,
           theme: effectiveTheme,
-          title: isFirst ? query.slice(0, 34) : s.title,
+          title: isFirst && !s.titleEdited ? query.slice(0, 34) : s.title,
           updatedAt: Date.now(),
           messages: [...s.messages, userMsg, placeholderAssistant],
         };
@@ -906,6 +909,13 @@ export default function TaxAssistantView() {
 
   return (
     <div className="app-layout">
+      {renamingChat && <RenameChatDialog key={renamingChat.id} title={renamingChat.title}
+        onCancel={() => setRenamingChat(null)} onSave={name => {
+          setSessions(previous => previous.map(session => session.id === renamingChat.id
+            ? { ...session, title: name, titleEdited: true, updatedAt: Date.now() } : session));
+          setRenamingChat(null);
+        }} />}
+
       {/* Mobile Drawer Backdrop */}
       {sidebarOpen && (
         <div
@@ -1045,6 +1055,11 @@ export default function TaxAssistantView() {
                 >
                   {s.theme}
                 </span>
+                <button type="button" className="rename-session-btn"
+                  title="Ganti nama percakapan" aria-label={`Ganti nama percakapan: ${s.title}`}
+                  onClick={event => { event.stopPropagation(); setRenamingChat({ id: s.id, title: s.title }); }}>
+                  <PencilSimpleIcon size={14} aria-hidden="true" />
+                </button>
                 {sessions.length > 1 && (
                   <button
                     onClick={(e) => deleteSession(s.id, e)}
