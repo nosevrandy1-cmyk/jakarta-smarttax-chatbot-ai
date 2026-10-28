@@ -1,5 +1,7 @@
 "use client";
 
+import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
+import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import RenameChatDialog from "@/components/RenameChatDialog";
 import AnswerReferences, { type AnswerReference } from "@/components/AnswerReferences";
 import React, { useEffect, useRef, useState } from "react";
@@ -169,7 +171,7 @@ function renderInline(
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={i} style={{ color: "#ffffff", fontWeight: 600 }}>
+        <strong key={i} style={{ color: "var(--text-primary)", fontWeight: 600 }}>
           {part.slice(2, -2)}
         </strong>
       );
@@ -283,7 +285,7 @@ function FormattedMarkdown({
           key={i}
           style={{
             border: "none",
-            borderTop: "1px solid rgba(255,255,255,0.1)",
+            borderTop: "1px solid rgba(var(--chat-ink), 0.1)",
             margin: "14px 0",
           }}
         />
@@ -345,6 +347,19 @@ function FormattedMarkdown({
 }
 
 export default function TaxAssistantView() {
+  const [appearance, setAppearance] = useState<"dark" | "light">("dark");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jakarta_smarttax_chat_appearance");
+      if (saved === "light" || saved === "dark") setAppearance(saved);
+    } catch { /* Keep the default when browser storage is unavailable. */ }
+  }, []);
+  function toggleAppearance() {
+    const next = appearance === "dark" ? "light" : "dark";
+    setAppearance(next);
+    try { localStorage.setItem("jakarta_smarttax_chat_appearance", next); } catch { /* The toggle still works without storage. */ }
+  }
+
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [selectedModel, setSelectedModel] = useState<string>("gemma4:12b");
 
@@ -907,7 +922,7 @@ export default function TaxAssistantView() {
   const isChatEmpty = activeSession.messages.length === 0;
 
   return (
-    <div className="app-layout">
+    <div className="app-layout" data-chat-theme={appearance}>
       {renamingChat && <RenameChatDialog key={renamingChat.id} title={renamingChat.title}
         onCancel={() => setRenamingChat(null)} onSave={name => {
           setSessions(previous => previous.map(session => session.id === renamingChat.id
@@ -978,7 +993,7 @@ export default function TaxAssistantView() {
             marginBottom: "14px",
             minWidth: "240px",
             fontWeight: 500,
-            color: "#ececec",
+            color: "var(--text-primary)",
             cursor: "pointer",
           }}
         >
@@ -988,9 +1003,9 @@ export default function TaxAssistantView() {
                 width: "26px",
                 height: "26px",
                 borderRadius: "999px",
-                background: "#2a2a2a",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#ececec",
+                background: "var(--bg-raised)",
+                border: "1px solid rgba(var(--chat-ink), 0.12)",
+                color: "var(--text-primary)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1006,7 +1021,7 @@ export default function TaxAssistantView() {
           style={{
             fontSize: "11.5px",
             fontWeight: 600,
-            color: "#7a7a7a",
+            color: "var(--text-muted)",
             padding: "4px 10px 6px",
             minWidth: "240px",
           }}
@@ -1048,7 +1063,7 @@ export default function TaxAssistantView() {
                 <span
                   style={{
                     fontSize: "11px",
-                    color: "#7a7a7a",
+                    color: "var(--text-muted)",
                     fontWeight: 500,
                   }}
                 >
@@ -1075,7 +1090,7 @@ export default function TaxAssistantView() {
 
         <div
           style={{
-            borderTop: "1px solid rgba(255,255,255,0.06)",
+            borderTop: "1px solid rgba(var(--chat-ink), 0.06)",
             paddingTop: "10px",
             marginTop: "8px",
             minWidth: "240px",
@@ -1095,9 +1110,9 @@ export default function TaxAssistantView() {
                 width: "30px",
                 height: "30px",
                 borderRadius: "999px",
-                background: "#2a2a2a",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#ececec",
+                background: "var(--bg-raised)",
+                border: "1px solid rgba(var(--chat-ink), 0.1)",
+                color: "var(--text-primary)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1112,12 +1127,12 @@ export default function TaxAssistantView() {
                 style={{
                   fontSize: "13px",
                   fontWeight: 500,
-                  color: "#ececec",
+                  color: "var(--text-primary)",
                 }}
               >
                 Jakarta SmartTax 2026
               </div>
-              <div style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
+              <div style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
                 Tim AI Jakarta SmartTax
               </div>
             </div>
@@ -1151,6 +1166,11 @@ export default function TaxAssistantView() {
 
           </div>
 
+          <button type="button" className="chat-appearance-toggle" onClick={toggleAppearance}
+            aria-label={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}
+            title={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}>
+            {appearance === "dark" ? <SunIcon size={17} aria-hidden="true" /> : <MoonIcon size={17} aria-hidden="true" />}
+          </button>
         </header>
 
         <div
@@ -1195,8 +1215,8 @@ export default function TaxAssistantView() {
                   gap: "6px",
                   padding: "4px",
                   borderRadius: "999px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(var(--chat-ink), 0.04)",
+                  border: "1px solid rgba(var(--chat-ink), 0.08)",
                   marginBottom: "18px",
                 }}
               >
@@ -1216,9 +1236,9 @@ export default function TaxAssistantView() {
                         fontSize: "12.5px",
                         fontWeight: isActive ? 600 : 400,
                         background: isActive
-                          ? "rgba(255,255,255,0.13)"
+                          ? "rgba(var(--chat-ink), 0.13)"
                           : "transparent",
-                        color: isActive ? "#ffffff" : "#9ca3af",
+                        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
                         cursor: "pointer",
                         transition: "all 0.16s ease",
                       }}
@@ -1241,7 +1261,7 @@ export default function TaxAssistantView() {
                       style={{
                         fontSize: "13.5px",
                         fontWeight: 500,
-                        color: "#ececec",
+                        color: "var(--text-primary)",
                       }}
                     >
                       {card.title}
@@ -1249,7 +1269,7 @@ export default function TaxAssistantView() {
                     <div
                       style={{
                         fontSize: "12px",
-                        color: "#7a7a7a",
+                        color: "var(--text-muted)",
                         marginTop: "2px",
                       }}
                     >
@@ -1288,8 +1308,8 @@ export default function TaxAssistantView() {
                           alignSelf: "flex-end",
                           width: "100%",
                           maxWidth: "88%",
-                          background: "#2f2f2f",
-                          border: "1px solid rgba(255,255,255,0.16)",
+                          background: "var(--bg-surface)",
+                          border: "1px solid rgba(var(--chat-ink), 0.16)",
                           borderRadius: "18px",
                           padding: "12px 14px",
                           display: "flex",
@@ -1306,7 +1326,7 @@ export default function TaxAssistantView() {
                             background: "transparent",
                             border: "none",
                             resize: "none",
-                            color: "#ececec",
+                            color: "var(--text-primary)",
                             fontSize: "15px",
                             lineHeight: 1.5,
                           }}
@@ -1331,8 +1351,8 @@ export default function TaxAssistantView() {
                             type="button"
                             onClick={() => submitEditedMessage(idx)}
                             style={{
-                              background: "#ececec",
-                              color: "#171717",
+                              background: "var(--text-primary)",
+                              color: "var(--bg-sidebar)",
                               border: "none",
                               borderRadius: "999px",
                               padding: "6px 14px",
@@ -1361,8 +1381,8 @@ export default function TaxAssistantView() {
                         <div
                           style={{
                             maxWidth: "82%",
-                            background: "#2f2f2f",
-                            color: "#ececec",
+                            background: "var(--bg-surface)",
+                            color: "var(--text-primary)",
                             padding: "11px 16px",
                             borderRadius: "20px",
                             fontSize: "15px",
@@ -1389,8 +1409,8 @@ export default function TaxAssistantView() {
                           height: "28px",
                           minWidth: "28px",
                           borderRadius: "999px",
-                          background: "#2a2a2a",
-                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "var(--bg-raised)",
+                          border: "1px solid rgba(var(--chat-ink), 0.12)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1419,7 +1439,7 @@ export default function TaxAssistantView() {
                                 width: "7px",
                                 height: "7px",
                                 borderRadius: "999px",
-                                background: "#ececec",
+                                background: "var(--text-primary)",
                                 animation: "pulseDot 1s infinite ease-in-out",
                               }}
                             />
@@ -1432,12 +1452,12 @@ export default function TaxAssistantView() {
                             open={m.isStreaming}
                             style={{
                               marginBottom: "10px",
-                              background: "rgba(255,255,255,0.03)",
-                              border: "1px solid rgba(255,255,255,0.08)",
+                              background: "rgba(var(--chat-ink), 0.03)",
+                              border: "1px solid rgba(var(--chat-ink), 0.08)",
                               borderRadius: "10px",
                               padding: "8px 12px",
                               fontSize: "12.5px",
-                              color: "#9ca3af",
+                              color: "var(--text-secondary)",
                             }}
                           >
                             <summary
@@ -1451,7 +1471,7 @@ export default function TaxAssistantView() {
                               }}
                             >
                               <CaretRightIcon size={13} className="thinking-caret" aria-hidden="true" />
-                              <span style={{ fontWeight: 600, color: "#d4d4d8" }}>
+                              <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>
                                 {m.isStreaming && !m.content
                                   ? "Sedang menelaah regulasi & dasar hukum..."
                                   : "Alur Penalaran"}
@@ -1462,7 +1482,7 @@ export default function TaxAssistantView() {
                                 marginTop: "6px",
                                 whiteSpace: "pre-wrap",
                                 lineHeight: 1.55,
-                                color: "#a1a1aa",
+                                color: "var(--text-secondary)",
                               }}
                             >
                               {m.thinking}
@@ -1503,7 +1523,7 @@ export default function TaxAssistantView() {
                                   {DKI_TAX_THEMES[m.suggestedTheme].shortLabel} &
                                   Tanya Ulang
                                 </span>
-                                <ArrowRightIcon size={14} color="#8e8e8e" aria-hidden="true" />
+                                <ArrowRightIcon size={14} color="var(--text-muted)" aria-hidden="true" />
                               </button>
                             </div>
                           )}
@@ -1547,7 +1567,7 @@ export default function TaxAssistantView() {
                               <span
                                 style={{
                                   fontSize: "11.5px",
-                                  color: "#6b6b6b",
+                                  color: "var(--text-muted)",
                                   marginLeft: "6px",
                                 }}
                               >
@@ -1574,7 +1594,7 @@ export default function TaxAssistantView() {
                               <span
                                 style={{
                                   fontSize: "11.5px",
-                                  color: "#7a7a7a",
+                                  color: "var(--text-muted)",
                                   fontWeight: 500,
                                 }}
                               >
@@ -1594,7 +1614,7 @@ export default function TaxAssistantView() {
                                     onClick={() => sendPrompt(q)}
                                     className="followup-chip"
                                   >
-                                    <ArrowBendDownRightIcon size={14} color="#7a7a7a" aria-hidden="true" />
+                                    <ArrowBendDownRightIcon size={14} color="var(--text-muted)" aria-hidden="true" />
                                     <span>{q}</span>
                                   </button>
                                 ))}
@@ -1654,7 +1674,7 @@ export default function TaxAssistantView() {
                 border: "none",
                 outline: "none",
                 resize: "none",
-                color: "#ececec",
+                color: "var(--text-primary)",
                 fontSize: "15px",
                 lineHeight: "1.5",
                 padding: "2px 2px",
@@ -1693,17 +1713,17 @@ export default function TaxAssistantView() {
                     <span>{themeConfig.shortLabel}</span>
                     <span
                       className="composer-pill-scope"
-                      style={{ color: "rgba(255,255,255,0.2)" }}
+                      style={{ color: "rgba(var(--chat-ink), 0.2)" }}
                     >
                       |
                     </span>
                     <span
                       className="composer-pill-scope"
-                      style={{ color: "#8e8e8e", fontWeight: 400 }}
+                      style={{ color: "var(--text-muted)", fontWeight: 400 }}
                     >
                       DKI Jakarta
                     </span>
-                    <CaretUpIcon size={12} weight="regular" aria-hidden="true" color="#8e8e8e" style={{
+                    <CaretUpIcon size={12} weight="regular" aria-hidden="true" color="var(--text-muted)" style={{
                         transform: themeMenuOpen
                           ? "rotate(180deg)"
                           : "rotate(0deg)",
@@ -1717,7 +1737,7 @@ export default function TaxAssistantView() {
                         style={{
                           fontSize: "11px",
                           fontWeight: 600,
-                          color: "#7a7a7a",
+                          color: "var(--text-muted)",
                           padding: "6px 11px 4px",
                         }}
                       >
@@ -1754,7 +1774,7 @@ export default function TaxAssistantView() {
                                     style={{
                                       fontSize: "13px",
                                       fontWeight: 500,
-                                      color: "#ececec",
+                                      color: "var(--text-primary)",
                                     }}
                                   >
                                     {item.label}
@@ -1762,7 +1782,7 @@ export default function TaxAssistantView() {
                                   <div
                                     style={{
                                       fontSize: "11.5px",
-                                      color: "#8e8e8e",
+                                      color: "var(--text-muted)",
                                     }}
                                   >
                                     {item.desc}
@@ -1772,7 +1792,7 @@ export default function TaxAssistantView() {
                               {isSelected && (
                                 <span
                                   style={{
-                                    color: "#ececec",
+                                    color: "var(--text-primary)",
                                     fontSize: "13px",
                                   }}
                                 >
@@ -1816,7 +1836,7 @@ export default function TaxAssistantView() {
             style={{
               textAlign: "center",
               fontSize: "11px",
-              color: "#737373",
+              color: "var(--text-muted)",
               marginTop: "7px",
             }}
           >
@@ -1835,10 +1855,10 @@ export default function TaxAssistantView() {
                 alignItems: "center",
                 gap: "10px",
                 padding: "14px 16px",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                borderBottom: "1px solid rgba(var(--chat-ink), 0.08)",
               }}
             >
-              <MagnifyingGlassIcon size={17} weight="regular" aria-hidden="true" color="#8e8e8e" />
+              <MagnifyingGlassIcon size={17} weight="regular" aria-hidden="true" color="var(--text-muted)" />
               <input
                 type="text"
                 value={cmdQuery}
@@ -1848,7 +1868,7 @@ export default function TaxAssistantView() {
                   flex: 1,
                   background: "transparent",
                   border: "none",
-                  color: "#ececec",
+                  color: "var(--text-primary)",
                   fontSize: "14.5px",
                 }}
                 autoFocus
@@ -1857,12 +1877,12 @@ export default function TaxAssistantView() {
                 type="button"
                 onClick={() => setCmdOpen(false)}
                 style={{
-                  background: "rgba(255,255,255,0.07)",
+                  background: "rgba(var(--chat-ink), 0.07)",
                   border: "none",
                   borderRadius: "6px",
                   padding: "2px 7px",
                   fontSize: "11px",
-                  color: "#9ca3af",
+                  color: "var(--text-secondary)",
                   cursor: "pointer",
                 }}
               >
@@ -1881,7 +1901,7 @@ export default function TaxAssistantView() {
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: "#7a7a7a",
+                  color: "var(--text-muted)",
                   padding: "4px 10px 6px",
                 }}
               >
@@ -1924,18 +1944,18 @@ export default function TaxAssistantView() {
                             style={{
                               fontSize: "13px",
                               fontWeight: 500,
-                              color: "#ececec",
+                              color: "var(--text-primary)",
                             }}
                           >
                             {t.label}
                           </div>
-                          <div style={{ fontSize: "11.5px", color: "#8e8e8e" }}>
+                          <div style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
                             {t.desc}
                           </div>
                         </div>
                       </div>
                       {currentTheme === code && (
-                        <span style={{ fontSize: "12px", color: "#9ca3af" }}>
+                        <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
                           Aktif
                         </span>
                       )}
@@ -1947,7 +1967,7 @@ export default function TaxAssistantView() {
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: "#7a7a7a",
+                  color: "var(--text-muted)",
                   padding: "10px 10px 6px",
                 }}
               >
@@ -1972,7 +1992,7 @@ export default function TaxAssistantView() {
                     <span
                       style={{
                         fontSize: "13px",
-                        color: "#ececec",
+                        color: "var(--text-primary)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -1980,7 +2000,7 @@ export default function TaxAssistantView() {
                     >
                       {s.title}
                     </span>
-                    <span style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
+                    <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
                       {s.theme}
                     </span>
                   </button>
@@ -1998,13 +2018,13 @@ export default function TaxAssistantView() {
               type="button"
               onClick={undoDeleteSession}
               style={{
-                background: "rgba(255,255,255,0.1)",
-                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(var(--chat-ink), 0.1)",
+                border: "1px solid rgba(var(--chat-ink), 0.18)",
                 borderRadius: "6px",
                 padding: "3px 9px",
                 fontSize: "12px",
                 fontWeight: 500,
-                color: "#ffffff",
+                color: "var(--text-primary)",
                 cursor: "pointer",
               }}
             >
