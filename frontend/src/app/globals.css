@@ -1250,3 +1250,58 @@ details[open] > .thinking-summary .thinking-caret {
     grid-template-columns: 1fr;
   }
 }
+
+/* Knowledge topology: telemetry-backed links, illustrative signal motion. */
+.audit-neural-map { border: 1px solid var(--audit-border-strong); border-radius: 16px; background: var(--audit-surface); padding: 24px; }
+.neural-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.neural-eyebrow { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--audit-text-secondary); }
+.neural-heading h2 { font-size: clamp(18px, 2vw, 24px); line-height: 1.3; margin: 7px 0; }
+.neural-heading p, .neural-detail p { font-size: 12px; color: var(--audit-text-secondary); line-height: 1.6; }
+.neural-layout { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 24px; margin-top: 20px; }
+.neural-figure { min-width: 0; margin: 0; }
+.neural-canvas { overflow-x: auto; border-radius: 10px; background: var(--audit-bg); color: var(--audit-text-secondary); }
+.neural-svg { width: 100%; min-width: 600px; display: block; }
+.neural-column-title { fill: var(--audit-text-secondary); font: 10px ui-monospace, monospace; letter-spacing: 1.5px; }
+.neural-node-label { fill: var(--audit-text); font: 13px ui-sans-serif, sans-serif; }
+.neural-link, .neural-output { fill: none; stroke-width: 1; transition: opacity .25s, stroke-width .25s; }
+.neural-link.has-data { opacity: .25; }
+.neural-link.is-empty { opacity: .1; stroke-dasharray: 3 7; }
+.neural-link.is-active { opacity: .9; stroke-width: 2; }
+.neural-output { stroke: var(--audit-border-strong); }
+.neural-output.is-active { stroke: #60a5fa; stroke-width: 2; }
+.neural-domain { fill: var(--audit-surface); stroke: var(--audit-border-strong); stroke-width: 1.5; }
+.neural-domain.is-selected { stroke: #60a5fa; stroke-width: 2; }
+.neural-halo { fill: none; stroke: #60a5fa; opacity: .2; stroke-dasharray: 2 8; }
+.neural-core { fill: var(--audit-surface); stroke: #60a5fa; stroke-width: 2; }
+.neural-core-label { fill: var(--audit-text); font: bold 14px ui-monospace, monospace; }
+.neural-figure figcaption { font-size: 11px; line-height: 1.6; color: var(--audit-text-secondary); margin-top: 10px; }
+.neural-detail { padding: 18px; background: var(--audit-surface-elevated); border: 1px solid var(--audit-border); border-radius: 12px; }
+.neural-detail h3 { font-size: 20px; margin-top: 10px; }
+.neural-total { font: 36px ui-monospace, monospace; margin: 12px 0 20px; }
+.neural-total > span { display: block; font: 11px ui-sans-serif, sans-serif; color: var(--audit-text-secondary); margin-top: 4px; }
+.neural-detail dl > div { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--audit-border); font-size: 12px; }
+.neural-detail dt { display: flex; align-items: center; gap: 7px; }
+.neural-detail dd { font-family: ui-monospace, monospace; }
+.neural-legend-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.neural-detail p { margin-top: 14px; }
+.neural-coverage { display: block; margin-top: 16px; font-size: 11px; color: var(--audit-text-secondary); }
+.neural-domain-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.neural-domain-picker button { min-height: 40px; padding: 8px 15px; border: 1px solid var(--audit-border-strong); border-radius: 8px; background: var(--audit-surface-elevated); color: var(--audit-text-secondary); cursor: pointer; font-size: 12px; }
+.neural-domain-picker button[aria-pressed="true"] { border-color: #60a5fa; color: var(--audit-text); box-shadow: inset 0 0 0 1px #60a5fa; }
+.neural-disclaimer { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--audit-border); font-size: 12px; color: var(--audit-text-secondary); line-height: 1.65; }
+.audit-shell button:focus-visible, .audit-shell input:focus-visible, .audit-shell select:focus-visible, .audit-shell textarea:focus-visible, .neural-canvas:focus-visible { outline: 2px solid #60a5fa; outline-offset: 3px; }
+.audit-neural-map.is-paused .neural-signal { display: none; }
+@media (prefers-reduced-motion: reduce) { .neural-signal { display: none; } .neural-link, .neural-output { transition: none; } }
+@media (max-width: 1000px) { .neural-layout { grid-template-columns: minmax(0, 1fr); } .neural-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; } .neural-detail .neural-eyebrow, .neural-detail h3 { grid-column: 1; } .neural-total { grid-column: 1; margin: 4px 0; } .neural-detail dl { grid-column: 2; grid-row: 1 / span 3; } .neural-detail p, .neural-coverage { grid-column: 1 / -1; } }
+@media (max-width: 520px) { .audit-neural-map { padding: 16px; } .neural-layout { gap: 12px; } .neural-domain-picker button { min-height: 44px; flex: 1 0 28%; } }
+
+.neural-svg { height: 320px; }
+.audit-guide-summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.audit-guide-summary + div { margin-top: 14px; }
+.audit-shell { --audit-text-muted: #a1a1aa; }
+.audit-shell[data-audit-theme="light"] { --audit-text-muted: #475569; }
+.audit-badge-pass { background-color: #047857; }
+.audit-badge-partial { background-color: #92400e; }
+
+/* References are request-specific source excerpts, not search suggestions. */
+.chat-references{margin-top:22px;padding-top:15px;border-top:1px solid var(--border-subtle)}.chat-references h3{font-size:13px;font-weight:600;color:var(--text-primary)}.chat-references>p{font-size:11px;color:var(--text-secondary);margin:4px 0 12px}.chat-references ol{list-style:none;display:flex;flex-direction:column;gap:8px}.chat-references li{border:1px solid var(--border-subtle);border-radius:12px;background:#ffffff03}.chat-references summary{display:flex;align-items:flex-start;gap:9px;padding:12px;cursor:pointer;list-style:none}.chat-references summary::-webkit-details-marker{display:none}.chat-references summary:focus-visible{outline:2px solid #93c5fd;outline-offset:3px;border-radius:10px}.chat-reference-number{font-size:11px;color:#93c5fd;flex-shrink:0}.chat-references summary>svg{flex-shrink:0;margin-top:3px;color:var(--text-secondary)}.chat-reference-title{font-size:12px;color:var(--text-primary);overflow-wrap:anywhere;flex:1}.chat-reference-title small{display:block;font-size:10px;color:var(--text-secondary);margin-top:3px}.chat-references summary:after{content:'+';color:var(--text-secondary)}.chat-references details[open]>summary:after{content:'−'}.chat-references blockquote{white-space:pre-wrap;overflow-wrap:anywhere;border-left:2px solid #555;margin:0 14px 14px;padding:2px 0 2px 12px;font-size:12px;line-height:1.8;color:var(--text-secondary)}

@@ -12,7 +12,7 @@ QDRANT_STORAGE_DIR = BASE_DIR / "qdrant_storage"
 CHROMA_STORAGE_DIR = Path(
     os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "smarttax_vectordb"))
 ).resolve()
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge")
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge_official")
 
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
 INTELLIGENCE_HISTORY_PATH = BASE_DIR / "dashboard_intelligence_history.json"
@@ -38,9 +38,9 @@ OLLAMA_KV_CACHE_TYPE = os.getenv("OLLAMA_KV_CACHE_TYPE", "q8_0")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 HARDWARE_PROFILE: Dict[str, Any] = {
-    "system": "MSI Infinite S3",
-    "gpu": "NVIDIA RTX 5060 Ti",
-    "vram_gb": 8,
+    "system": os.getenv("JST_SYSTEM_NAME") or None,
+    "gpu": os.getenv("JST_GPU_NAME") or None,
+    "vram_gb": float(os.environ["JST_VRAM_GB"]) if os.getenv("JST_VRAM_GB") else None,
     "primary_llm": DEFAULT_CHAT_MODEL,
     "embedding_model": OLLAMA_EMBED_MODEL,
     "flash_attention": OLLAMA_FLASH_ATTENTION == "1",
@@ -67,7 +67,7 @@ OLLAMA_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
 }
 
 QDRANT_URL = os.getenv("QDRANT_URL", "").strip()
-QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "jakarta_smarttax_kb")
+QDRANT_COLLECTION = os.getenv("QDRANT_ACTIVE_COLLECTION", "jakarta_smarttax_sources")
 
 TRANSFORMERS_MODEL_NAME = os.getenv(
     "TRANSFORMERS_MODEL_NAME",

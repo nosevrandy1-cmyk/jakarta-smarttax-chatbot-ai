@@ -5,9 +5,9 @@ export type RagSourceType = "pdf_regulasi" | "excel_data" | "user_reasoning";
 export type BenchmarkStatus = "PASS" | "PARTIAL" | "FAIL";
 
 export interface HardwareTelemetry {
-  system: string;
-  gpu: string;
-  vram_gb: number;
+  system: string | null;
+  gpu: string | null;
+  vram_gb: number | null;
   primary_llm: string;
   embedding_model: string;
   flash_attention: boolean;
@@ -33,6 +33,7 @@ export interface VectorStoreTelemetry {
   persist_dir: string;
   distance_metric: string;
   total_chunks: number;
+  total_documents: number;
   by_source_type: Record<RagSourceType, number>;
   domain_matrix: Record<TaxDomainCode, Record<RagSourceType, number>>;
   covered_slots: number;
@@ -116,7 +117,8 @@ export interface HistoryTimelinePoint {
 export interface DashboardTelemetryState {
   hardware: HardwareTelemetry;
   vector_store: VectorStoreTelemetry;
-  latest_snapshot: EvaluationSnapshot;
+  latest_snapshot: EvaluationSnapshot | null;
+  evaluation_readiness: { ready: boolean; source_chunks: number; golden_items: number; reason: string };
   history_timeline: HistoryTimelinePoint[];
 }
 

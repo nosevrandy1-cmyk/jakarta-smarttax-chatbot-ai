@@ -1,5 +1,6 @@
 "use client";
 
+import AnswerReferences, { type AnswerReference } from "@/components/AnswerReferences";
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowBendDownRightIcon } from "@phosphor-icons/react/dist/csr/ArrowBendDownRight";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -31,7 +32,9 @@ import {
 } from "@/config/smarttaxConfig";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const STORAGE_KEY = "jakarta_smarttax_sessions_v2";
+const STORAGE_KEY = "jakarta_smarttax_sessions_v3";
+const LEGACY_STORAGE_KEY = "jakarta_smarttax_sessions_v2";
+const STORAGE_MIGRATION_KEY = "jakarta_smarttax_data_version";
 
 interface TaxThemeConfig {
   code: TaxThemeCode;
@@ -83,31 +86,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "PBB-P2 (Bumi & Bangunan)",
     desc: "SPPT, NOP, NJOP, Insentif & Tunggakan DKI Jakarta",
     iconColor: "#60a5fa",
-    greeting: "Mau cek objek atau ketetapan PBB-P2 mana hari ini?",
-    subtitle: "Telusuri NOP, status pembayaran SPPT, atau rincian tagihan wilayah DKI Jakarta.",
-    placeholder: "Ketik NOP, nama gedung, atau tanya informasi PBB-P2...",
-    suggestions: [
-      {
-        title: "Cek Tunggakan PBB-P2 DKI",
-        subtitle: "Daftar objek yang belum lunas beserta akumulasi denda",
-        prompt: "Tampilkan daftar tunggakan PBB-P2 di DKI Jakarta beserta rincian dendanya",
-      },
-      {
-        title: "Rekapitulasi Wilayah DKI Jakarta",
-        subtitle: "Target & realisasi PBB-P2 per Kota Administrasi",
-        prompt: "Rekapitulasi ketetapan dan realisasi PBB-P2 DKI Jakarta per wilayah",
-      },
-      {
-        title: "Lacak NOP Gedung SCBD",
-        subtitle: "Rincian ketetapan NOP 31.74.010.003.008-0042.0",
-        prompt: "Cek detail SPPT NOP 31.74.010.003.008-0042.0 di Jakarta Selatan",
-      },
-      {
-        title: "Tarif & Kriteria Bebas 100%",
-        subtitle: "Informasi tarif, NJOPTKP, dan pembebasan hunian DKI",
-        prompt: "Berapa tarif PBB-P2, NJOPTKP Rp 60 juta, dan syarat pembebasan 100% di DKI Jakarta?",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   PBJT: {
     code: "PBJT",
@@ -115,31 +97,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "PBJT (Restoran, Hotel, Parkir, Hiburan)",
     desc: "Makanan & Minuman, Perhotelan, Parkir, Hiburan & Listrik",
     iconColor: "#f59e0b",
-    greeting: "Cek pajak restoran, hotel, parkir, atau hiburan di DKI?",
-    subtitle: "Lacak NPWPD, ketetapan e-SPTPD masa pajak, dan rincian objek PBJT.",
-    placeholder: "Ketik NPWPD, nama restoran/hotel, atau tanya tarif PBJT...",
-    suggestions: [
-      {
-        title: "Tunggakan e-SPTPD PBJT",
-        subtitle: "Wajib Pajak Restoran & Hiburan yang belum lunas",
-        prompt: "Tampilkan daftar tunggakan PBJT di DKI Jakarta beserta dendanya",
-      },
-      {
-        title: "Rincian Tarif PBJT DKI",
-        subtitle: "Restoran 10%, Hotel 10%, Parkir 10%, Hiburan 40%",
-        prompt: "Jelaskan rincian tarif PBJT Makanan/Minuman, Hotel, Parkir, dan Hiburan di DKI Jakarta",
-      },
-      {
-        title: "Daftar Objek PBJT Senopati & PIK",
-        subtitle: "Data NPWPD Restoran, Hotel Thamrin & Karaoke PIK",
-        prompt: "Tampilkan seluruh data Wajib Pajak PBJT di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi PBJT per Wilayah",
-        subtitle: "Realisasi PBJT Jakarta Selatan, Pusat, Utara & Timur",
-        prompt: "Rekapitulasi ketetapan dan realisasi PBJT DKI Jakarta per wilayah",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   BPHTB: {
     code: "BPHTB",
@@ -147,31 +108,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "BPHTB (Perolehan Hak Tanah/Bangunan)",
     desc: "SSPD Jual Beli (AJB), Waris/Hibah & NPOPTKP DKI Jakarta",
     iconColor: "#a78bfa",
-    greeting: "Butuh rincian BPHTB jual beli atau waris di Jakarta?",
-    subtitle: "Periksa status validasi SSPD BPHTB, potongan NPOPTKP, dan simulasi tarif 5%.",
-    placeholder: "Ketik nomor SSPD, lokasi AJB, atau tanya rumus NPOPTKP...",
-    suggestions: [
-      {
-        title: "Daftar SSPD BPHTB DKI",
-        subtitle: "Transaksi Jual Beli (Cilandak) & Waris (Cempaka Putih)",
-        prompt: "Tampilkan seluruh data SSPD BPHTB di DKI Jakarta",
-      },
-      {
-        title: "NPOPTKP Jual Beli vs Waris",
-        subtitle: "Umum Rp 80 Juta & Waris/Hibah Rp 350 Juta (Tarif 5%)",
-        prompt: "Berapa tarif BPHTB dan besaran NPOPTKP Jual Beli serta Waris di DKI Jakarta?",
-      },
-      {
-        title: "SSPD Belum Tervalidasi",
-        subtitle: "Cek berkas BPHTB yang masih berstatus belum lunas",
-        prompt: "Tampilkan daftar tunggakan BPHTB yang belum lunas di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi Penerimaan BPHTB",
-        subtitle: "Ringkasan ketetapan & realisasi BPHTB per wilayah",
-        prompt: "Rekapitulasi ketetapan dan realisasi BPHTB di DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   REKLAME: {
     code: "REKLAME",
@@ -179,67 +119,26 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "Pajak Reklame",
     desc: "SKPD Videotron LED, Billboard, NSR & Kawasan Kendali Ketat",
     iconColor: "#f472b6",
-    greeting: "Cek SKPD reklame, videotron, atau tarif kawasan DKI?",
-    subtitle: "Telusuri Nilai Sewa Reklame (NSR), titik tayang, dan status SKPD.",
-    placeholder: "Ketik nomor SKPD Reklame, lokasi titik tayang, atau tanya NSR...",
-    suggestions: [
-      {
-        title: "Daftar Titik Reklame & Videotron",
-        subtitle: "Videotron LED Bundaran HI & Billboard Kemang Raya",
-        prompt: "Tampilkan seluruh data objek Pajak Reklame di DKI Jakarta",
-      },
-      {
-        title: "SKPD Reklame Belum Lunas",
-        subtitle: "Cek tunggakan Pajak Reklame beserta denda",
-        prompt: "Tampilkan daftar tunggakan Pajak Reklame di DKI Jakarta",
-      },
-      {
-        title: "Tarif 25% & Kawasan Protokol",
-        subtitle: "Ketentuan koridor protokol Sudirman–Thamrin–Kuningan",
-        prompt: "Bagaimana aturan tarif Pajak Reklame 25% dan Kawasan Kendali Ketat di DKI Jakarta?",
-      },
-      {
-        title: "Rekapitulasi Pajak Reklame",
-        subtitle: "Target & realisasi Pajak Reklame per wilayah",
-        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Reklame DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   PAT: {
     code: "PAT",
     shortLabel: "Air Tanah",
     label: "Pajak Air Tanah (PAT)",
-    desc: "SKPD Air Tanah, Volume m³, NPAT & Tarif 20% DKI Jakarta",
+    desc: "Pajak Air Tanah dan dokumen terkait",
     iconColor: "#38bdf8",
-    greeting: "Cek ketetapan atau volume Pajak Air Tanah DKI?",
-    subtitle: "Pantau SKPD sumur bor industri, perhitungan NPAT, dan status pembayaran.",
-    placeholder: "Ketik nomor SKPD PAT, nama industri, atau tanya rumus NPAT...",
-    suggestions: [
-      {
-        title: "Data Wajib Pajak Air Tanah",
-        subtitle: "Kawasan Industri Pulo Gadung & Gedung Komersial Kuningan",
-        prompt: "Tampilkan seluruh data Wajib Pajak Air Tanah (PAT) di DKI Jakarta",
-      },
-      {
-        title: "Tunggakan SKPD Air Tanah",
-        subtitle: "Daftar objek PAT yang belum lunas beserta denda",
-        prompt: "Tampilkan daftar tunggakan Pajak Air Tanah di DKI Jakarta",
-      },
-      {
-        title: "Perhitungan NPAT & Tarif 20%",
-        subtitle: "Komponen Harga Dasar Air & Faktor Nilai Air DKI",
-        prompt: "Jelaskan ketentuan tarif 20% dan dasar pengenaan NPAT Pajak Air Tanah di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi PAT per Wilayah",
-        subtitle: "Ringkasan ketetapan & realisasi PAT DKI Jakarta",
-        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Air Tanah di DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
 };
 
 interface ChatMessage {
+  references?: AnswerReference[];
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -529,6 +428,20 @@ export default function TaxAssistantView() {
       setSidebarOpen(false);
     }
     try {
+      // Keep legacy conversations out of the active UI and model history.
+      // Archive once so existing user conversations remain recoverable locally.
+      if (localStorage.getItem(STORAGE_MIGRATION_KEY) !== "3") {
+        const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacy && !localStorage.getItem(`${LEGACY_STORAGE_KEY}_archived`)) {
+          localStorage.setItem(`${LEGACY_STORAGE_KEY}_archived`, legacy);
+        }
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+        localStorage.setItem(STORAGE_MIGRATION_KEY, "3");
+        if (!localStorage.getItem(STORAGE_KEY)) {
+          setSessions([{ id: "default-session", title: "Percakapan Baru", theme: "PBB-P2", updatedAt: Date.now(), messages: [] }]);
+          setActiveSessionId("default-session");
+        }
+      }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -762,7 +675,7 @@ export default function TaxAssistantView() {
       id: assistantMsgId,
       role: "assistant",
       content: "",
-      statusText: `Menelusuri arsip ${effectiveTheme} Bapenda DKI Jakarta...`,
+      statusText: "Menghubungi model lokal…",
       isStreaming: true,
       originalQuestion: query,
     };
@@ -835,6 +748,9 @@ export default function TaxAssistantView() {
             continue;
           }
 
+          if (evt.type === "error") {
+            throw new Error(evt.text || "Model lokal tidak dapat dihubungi.");
+          }
           setSessions((prev) =>
             prev.map((s) => {
               if (s.id !== activeSessionId) return s;
@@ -854,7 +770,7 @@ export default function TaxAssistantView() {
                   if (evt.type === "thinking") {
                     return {
                       ...m,
-                      statusText: `Menyusun rincian ${effectiveTheme}...`,
+                      statusText: "Model sedang memproses jawaban…",
                       thinking: (m.thinking || "") + (evt.delta || ""),
                     };
                   }
@@ -871,6 +787,8 @@ export default function TaxAssistantView() {
                       isStreaming: false,
                       statusText: undefined,
                       modelUsed: evt.model_used,
+                      references: evt.references || [],
+                      content: typeof evt.answer === "string" ? evt.answer : m.content,
                       durationMs: evt.duration_ms,
                       suggestedTheme:
                         (evt.suggested_theme as TaxThemeCode) ||
@@ -1579,6 +1497,8 @@ export default function TaxAssistantView() {
                           onCopyCode={handleCopyInlineCode}
                         />
 
+                        {!m.isStreaming && <AnswerReferences references={m.references} />}
+
                         {!m.isStreaming &&
                           m.suggestedTheme &&
                           m.suggestedTheme !== currentTheme && (
@@ -1921,8 +1841,7 @@ export default function TaxAssistantView() {
               marginTop: "7px",
             }}
           >
-            Data bersumber langsung dari arsip lokal Bapenda DKI Jakarta • Tanpa
-            akses internet.
+            Jawaban mengacu pada dokumen proyek yang tersedia. Periksa sumber sebelum menggunakan informasinya.
           </div>
         </div>
       </div>

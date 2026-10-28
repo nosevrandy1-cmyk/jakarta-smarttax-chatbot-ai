@@ -1,28 +1,34 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
 import { CaretDownIcon } from "@phosphor-icons/react/dist/csr/CaretDown";
 import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
-import { ChartLineUpIcon } from "@phosphor-icons/react/dist/csr/ChartLineUp";
 import { CheckCircleIcon } from "@phosphor-icons/react/dist/csr/CheckCircle";
 import { DatabaseIcon } from "@phosphor-icons/react/dist/csr/Database";
 import { FilePdfIcon } from "@phosphor-icons/react/dist/csr/FilePdf";
 import { FileXlsIcon } from "@phosphor-icons/react/dist/csr/FileXls";
-import { GitDiffIcon } from "@phosphor-icons/react/dist/csr/GitDiff";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import { PlayIcon } from "@phosphor-icons/react/dist/csr/Play";
 import { ShieldCheckIcon } from "@phosphor-icons/react/dist/csr/ShieldCheck";
 import { SlidersHorizontalIcon } from "@phosphor-icons/react/dist/csr/SlidersHorizontal";
 import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
-import { TerminalWindowIcon } from "@phosphor-icons/react/dist/csr/TerminalWindow";
 import { UploadSimpleIcon } from "@phosphor-icons/react/dist/csr/UploadSimple";
 import { WarningIcon } from "@phosphor-icons/react/dist/csr/Warning";
 import { XCircleIcon } from "@phosphor-icons/react/dist/csr/XCircle";
 
+import { ArrowUpRightIcon } from "@phosphor-icons/react/dist/csr/ArrowUpRight";
+import { ArrowLeftIcon } from "@phosphor-icons/react/dist/csr/ArrowLeft";
+import { SquaresFourIcon } from "@phosphor-icons/react/dist/csr/SquaresFour";
+import { FoldersIcon } from "@phosphor-icons/react/dist/csr/Folders";
+import { ClockCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ClockCounterClockwise";
+import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
+import "@/app/dashboard.css";
+import ChunkDetailPanel from "@/components/ChunkDetailPanel";
+import KnowledgeNeuralMap from "@/components/KnowledgeNeuralMap";
+
 import type {
-  BenchmarkStatus,
   DashboardTelemetryState,
   GoldenAuditItem,
   LearnReasoningInput,
@@ -41,29 +47,6 @@ const TAX_DOMAINS: TaxDomainCode[] = [
   "PAT",
 ];
 
-const REASONING_PRESETS: Record<string, LearnReasoningInput> = {
-  JPB_SCBD: {
-    topik_pajak: "JPB",
-    kontributor: "Auditor Penilai JPB Bapenda DKI",
-    pertanyaan_kasus:
-      "Berapa tarif PBB-P2 untuk objek gedung perkantoran komersial (JPB Perkantoran) seperti SCBD Lot 9 dengan NJOP Rp 185 Miliar, dan bagaimana perhitungan sanksi denda keterlambatan per bulan?",
-    alur_penalaran:
-      "Berdasarkan Pasal 36-39 Perda Pajak Daerah DKI Jakarta dan Klasifikasi JPB Perkantoran Komersial: (1) Gedung Perkantoran SCBD Lot 9 memiliki NJOP Rp 185.000.000.000 dikurangi NJOPTKP Rp 60.000.000; (2) Dikenakan tarif komersial maksimal 0,5% dengan pokok ketetapan Rp 369.880.000; (3) Keterlambatan setelah jatuh tempo dikenakan bunga denda 1% per bulan (maksimal 24 bulan) senilai Rp 3.698.800 per bulan.",
-    jawaban_final:
-      "Objek gedung perkantoran komersial (JPB Perkantoran) seperti Gedung Perkantoran SCBD Lot 9 dengan NJOP Rp 185.000.000.000 dan pengurang NJOPTKP Rp 60.000.000 dikenakan tarif PBB-P2 sebesar 0,5% dengan pokok pajak Rp 369.880.000. Sanksi denda keterlambatan adalah 1% per bulan (maksimal 24 bulan).",
-  },
-  BPHTB_WARIS: {
-    topik_pajak: "BPHTB",
-    kontributor: "Analis Hukum BPHTB DKI",
-    pertanyaan_kasus:
-      "Berapa besaran NPOPTKP dan perhitungan BPHTB untuk perolehan hak karena Waris atau Hibah Wasiat dalam garis keturunan lurus satu derajat di DKI Jakarta dengan nilai objek Rp 2,4 Miliar?",
-    alur_penalaran:
-      "Mengacu Pasal 58-64 Ayat (3) Perda DKI Jakarta: Untuk perolehan hak karena Waris atau Hibah Wasiat hubungan keluarga sedarah lurus satu derajat, NPOPTKP ditetapkan sebesar Rp 350.000.000 (350 juta). Dari NPOP Rp 2.400.000.000 dikurangi NPOPTKP Waris Rp 350.000.000 diperoleh NPOPKP Rp 2.050.000.000 dikalikan tarif 5% = Rp 102.500.000.",
-    jawaban_final:
-      "NPOPTKP untuk perolehan hak karena Waris atau Hibah Wasiat di DKI Jakarta adalah Rp 350.000.000 (350 juta). Untuk objek senilai Rp 2.400.000.000, nilai NPOPKP adalah Rp 2.050.000.000 dikalikan tarif 5% menghasilkan pokok BPHTB sebesar Rp 102.500.000.",
-  },
-};
-
 function SourceIcon({
   sourceType,
   size = 14,
@@ -81,74 +64,13 @@ function SourceIcon({
 }
 
 const SOURCE_TYPE_LABELS: Record<RagSourceType, string> = {
-  pdf_regulasi: "PDF Peraturan",
+  pdf_regulasi: "Dokumen PDF",
   excel_data: "Tabel Excel/CSV",
-  user_reasoning: "Contoh Kasus Ahli",
+  user_reasoning: "Kasus Rujukan",
 };
 
-function StatusBadge({
-  status,
-  score,
-}: {
-  status: BenchmarkStatus;
-  score: number;
-}) {
-  const cls =
-    status === "PASS"
-      ? "audit-badge audit-badge-pass"
-      : status === "PARTIAL"
-      ? "audit-badge audit-badge-partial"
-      : "audit-badge audit-badge-fail";
-
-  const label =
-    status === "PASS"
-      ? "LULUS"
-      : status === "PARTIAL"
-      ? "CUKUP"
-      : "BELUM LULUS";
-
-  return (
-    <span className={cls}>
-      {status === "PASS" ? (
-        <CheckCircleIcon size={13} weight="bold" />
-      ) : status === "PARTIAL" ? (
-        <WarningIcon size={13} weight="bold" />
-      ) : (
-        <XCircleIcon size={13} weight="bold" />
-      )}
-      <span className="font-mono-tabular">
-        {label} ({score.toFixed(1)}%)
-      </span>
-    </span>
-  );
-}
-
 function DeltaPill({ delta }: { delta: number }) {
-  const sign = delta >= 0 ? "+" : "";
-  const bg =
-    delta > 0
-      ? "#059669"
-      : delta < 0
-      ? "#dc2626"
-      : "rgba(113, 113, 122, 0.35)";
-  return (
-    <span
-      className="font-mono-tabular"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "2px 7px",
-        borderRadius: "4px",
-        fontSize: "11.5px",
-        fontWeight: 600,
-        backgroundColor: bg,
-        color: "#ffffff",
-      }}
-    >
-      {sign}
-      {delta.toFixed(2)}%
-    </span>
-  );
+  return <span className={`jst-delta ${delta > 0 ? "is-positive" : delta < 0 ? "is-negative" : ""}`} title="Perubahan dalam poin persentase" aria-label={`${delta >= 0 ? "Plus" : "Minus"} ${Math.abs(delta).toFixed(2)} poin persentase`}>{delta > 0 ? "+" : ""}{delta.toFixed(2)} pp</span>;
 }
 
 export default function IntelligenceAuditDashboard({
@@ -157,6 +79,14 @@ export default function IntelligenceAuditDashboard({
   onBackToChat?: () => void;
 }) {
   const [surfaceTheme, setSurfaceTheme] = useState<"dark" | "light">("dark");
+  const [page, setPage] = useState<"overview" | "sources" | "evaluation" | "history" | "system">("overview");
+  const [chunksOpen, setChunksOpen] = useState(false);
+  const firstPageRender = useRef(true);
+  useEffect(() => {
+    if (page !== "sources") { setPdfFile(null); setExcelFile(null); }
+    if (firstPageRender.current) { firstPageRender.current = false; return; }
+    document.querySelector<HTMLHeadingElement>(".jst-page-header h1")?.focus();
+  }, [page]);
   const [data, setData] = useState<DashboardTelemetryState | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
@@ -171,28 +101,19 @@ export default function IntelligenceAuditDashboard({
 
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfDomain, setPdfDomain] = useState<TaxDomainCode>("JPB");
-  const [pdfContributor, setPdfContributor] = useState<string>(
-    "Tim Hukum Bapenda DKI"
-  );
+  const [pdfContributor, setPdfContributor] = useState<string>("");
 
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [excelDomain, setExcelDomain] = useState<TaxDomainCode>("REKLAME");
-  const [excelContributor, setExcelContributor] = useState<string>(
-    "Subbid Data & Penilaian"
-  );
+  const [excelContributor, setExcelContributor] = useState<string>("");
 
-  const [reasoningForm, setReasoningForm] = useState<LearnReasoningInput>(
-    REASONING_PRESETS.JPB_SCBD
-  );
+  const [reasoningForm, setReasoningForm] = useState<LearnReasoningInput>({ topik_pajak: "JPB", kontributor: "", pertanyaan_kasus: "", alur_penalaran: "", jawaban_final: "" });
 
   const [domainFilter, setDomainFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [sourceFilter, setSourceFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({
-    "GD-001": true,
-    "GD-002": true,
-  });
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
 
   const fetchTelemetry = useCallback(async () => {
     try {
@@ -236,11 +157,11 @@ export default function IntelligenceAuditDashboard({
       setData(res.dashboard);
       setStatusBanner({
         type: "success",
-        text: `Evaluasi Golden Dataset selesai. SmartTax IQ: ${res.snapshot.smarttax_iq_percentage.toFixed(
+        text: `Evaluasi Golden Dataset selesai. Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(
           2
         )}% (Delta: ${res.snapshot.delta_change >= 0 ? "+" : ""}${res.snapshot.delta_change.toFixed(
           2
-        )}%).`,
+        )} pp).`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -253,9 +174,10 @@ export default function IntelligenceAuditDashboard({
     }
   }
 
-  async function handlePdfSubmit(e: React.FormEvent) {
+  async function handlePdfSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!pdfFile || isIngesting) return;
+    if (!pdfFile || isIngesting || isEvaluating) return;
+    const submittedForm = e.currentTarget;
     setIsIngesting(true);
     setStatusBanner(null);
     try {
@@ -276,11 +198,10 @@ export default function IntelligenceAuditDashboard({
       const res = await resp.json();
       setData(res.dashboard);
       setPdfFile(null);
+      submittedForm.reset();
       setStatusBanner({
         type: "success",
-        text: `PDF "${res.ingestion.doc_name}" berhasil diparsing via pymupdf4llm (${res.ingestion.chunks_ingested} chunks) ke domain ${res.ingestion.domain}. SmartTax IQ: ${res.snapshot.smarttax_iq_percentage.toFixed(
-          2
-        )}%.`,
+        text: `Sumber PDF "${res.ingestion.doc_name}" tersimpan (${res.ingestion.chunks_ingested} potongan). ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -290,9 +211,10 @@ export default function IntelligenceAuditDashboard({
     }
   }
 
-  async function handleExcelSubmit(e: React.FormEvent) {
+  async function handleExcelSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!excelFile || isIngesting) return;
+    if (!excelFile || isIngesting || isEvaluating) return;
+    const submittedForm = e.currentTarget;
     setIsIngesting(true);
     setStatusBanner(null);
     try {
@@ -313,11 +235,10 @@ export default function IntelligenceAuditDashboard({
       const res = await resp.json();
       setData(res.dashboard);
       setExcelFile(null);
+      submittedForm.reset();
       setStatusBanner({
         type: "success",
-        text: `Tabel "${res.ingestion.doc_name}" berhasil diserialisasi (${res.ingestion.rows_ingested} baris) ke domain ${res.ingestion.domain}. SmartTax IQ: ${res.snapshot.smarttax_iq_percentage.toFixed(
-          2
-        )}%.`,
+        text: `Tabel "${res.ingestion.doc_name}" tersimpan (${res.ingestion.rows_ingested} baris). ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -330,7 +251,7 @@ export default function IntelligenceAuditDashboard({
     }
   }
 
-  async function handleReasoningSubmit(e: React.FormEvent) {
+  async function handleReasoningSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (isIngesting) return;
     setIsIngesting(true);
@@ -349,160 +270,13 @@ export default function IntelligenceAuditDashboard({
       setData(res.dashboard);
       setStatusBanner({
         type: "success",
-        text: `Penalaran kasus ${res.ingestion.domain} oleh ${res.ingestion.contributor} berhasil diindeks ke ChromaDB. SmartTax IQ meningkat menjadi ${res.snapshot.smarttax_iq_percentage.toFixed(
-          2
-        )}% (${res.snapshot.delta_change >= 0 ? "+" : ""}${res.snapshot.delta_change.toFixed(
-          2
-        )}%).`,
+        text: `Kasus rujukan ${res.ingestion.domain} berhasil disimpan. ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatusBanner({
         type: "error",
         text: `Injeksi penalaran gagal: ${msg}`,
-      });
-    } finally {
-      setIsIngesting(false);
-    }
-  }
-
-  async function handleSampleIngest(
-    sampleType: "pdf" | "excel",
-    domain: TaxDomainCode,
-    contributor: string
-  ) {
-    if (isIngesting) return;
-    setIsIngesting(true);
-    setStatusBanner(null);
-    try {
-      const resp = await fetch(`${API_BASE}/api/rag/ingest-sample`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sample_type: sampleType,
-          domain,
-          kontributor: contributor,
-        }),
-      });
-      if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.detail || `HTTP ${resp.status}`);
-      }
-      const res = await resp.json();
-      setData(res.dashboard);
-      setExpandedRows((prev) => ({
-        ...prev,
-        "GD-002": true,
-        "GD-006": true,
-      }));
-      setStatusBanner({
-        type: "success",
-        text: `Berhasil! Dokumen sampel "${res.ingestion.doc_name}" (${SOURCE_TYPE_LABELS[res.ingestion.source_type as RagSourceType] || res.ingestion.source_type}) sudah dipelajari AI. Skor Kepintaran AI sekarang: ${res.snapshot.smarttax_iq_percentage.toFixed(
-          2
-        )}%.`,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setStatusBanner({
-        type: "error",
-        text: `Gagal memuat sampel: ${msg}`,
-      });
-    } finally {
-      setIsIngesting(false);
-    }
-  }
-
-  async function handleRunFullAutoDemo() {
-    if (isIngesting || isEvaluating) return;
-    setIsIngesting(true);
-    setStatusBanner({
-      type: "success",
-      text: "Langkah 1/3: Mengajarkan AI dokumen PDF Peraturan JPB Gedung Bertingkat...",
-    });
-    try {
-      const r1 = await fetch(`${API_BASE}/api/rag/ingest-sample`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sample_type: "pdf",
-          domain: "JPB",
-          kontributor: "Simulasi Otomatis Bapenda",
-        }),
-      });
-      if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
-      const res1 = await r1.json();
-      setData(res1.dashboard);
-
-      setStatusBanner({
-        type: "success",
-        text: "Langkah 2/3: Mengajarkan AI Tabel Excel Tarif & Simulasi JPB...",
-      });
-      const r2 = await fetch(`${API_BASE}/api/rag/ingest-sample`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sample_type: "excel",
-          domain: "JPB",
-          kontributor: "Simulasi Otomatis Bapenda",
-        }),
-      });
-      if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
-      const res2 = await r2.json();
-      setData(res2.dashboard);
-
-      setStatusBanner({
-        type: "success",
-        text: "Langkah 3/3: Mengajarkan AI Cara Hitung Kasus BPHTB Waris (GD-006)...",
-      });
-      const r3 = await fetch(`${API_BASE}/api/rag/learn-reasoning`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(REASONING_PRESETS.BPHTB_WARIS),
-      });
-      if (!r3.ok) throw new Error(`HTTP ${r3.status}`);
-      const res3 = await r3.json();
-      setData(res3.dashboard);
-      setExpandedRows({
-        "GD-002": true,
-        "GD-006": true,
-      });
-      setStatusBanner({
-        type: "success",
-        text: `Simulasi Pelatihan Selesai! Skor Kepintaran AI (SmartTax IQ) naik menjadi ${res3.snapshot.smarttax_iq_percentage.toFixed(
-          2
-        )}%. Soal GD-002 (JPB) dan GD-006 (BPHTB Waris) kini berubah menjadi LULUS. Lihat bukti perbandingannya pada tabel di bawah.`,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setStatusBanner({
-        type: "error",
-        text: `Simulasi otomatis gagal: ${msg}`,
-      });
-    } finally {
-      setIsIngesting(false);
-    }
-  }
-
-  async function handleResetBaseline() {
-    if (isIngesting || isEvaluating) return;
-    setIsIngesting(true);
-    setStatusBanner(null);
-    try {
-      const resp = await fetch(`${API_BASE}/api/rag/reset-baseline`, {
-        method: "POST",
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const res = await resp.json();
-      setData(res.dashboard);
-      setStatusBanner({
-        type: "success",
-        text: "Data berhasil dikembalikan ke kondisi awal (Skor Kepintaran AI: 75.61%). Anda dapat mencoba simulasi pelatihan dari awal lagi.",
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setStatusBanner({
-        type: "error",
-        text: `Gagal mereset data awal: ${msg}`,
       });
     } finally {
       setIsIngesting(false);
@@ -549,1792 +323,104 @@ export default function IntelligenceAuditDashboard({
     };
   }, [data?.latest_snapshot?.items]);
 
-  if (loading && !data) {
-    return (
-      <div className="audit-shell" data-audit-theme={surfaceTheme}>
-        <div className="audit-container">
-          <div className="audit-card" style={{ padding: "32px" }}>
-            <div
-              className="font-mono-tabular"
-              style={{ fontSize: "13.5px", color: "var(--audit-text-secondary)" }}
-            >
-              Memuat telemetri ChromaDB & hasil audit Golden Dataset Bapenda DKI Jakarta...
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const hw = data?.hardware;
   const vs = data?.vector_store;
   const snap = data?.latest_snapshot;
   const timeline = data?.history_timeline || [];
+  const busy = isEvaluating || isIngesting || !data;
+  const missingDomains = TAX_DOMAINS.map(domain => ({ domain, missing: (Object.keys(SOURCE_TYPE_LABELS) as RagSourceType[]).filter(key => !((vs?.domain_matrix?.[domain]?.[key] ?? 0) > 0)) })).filter(item => item.missing.length);
+  const titles = { overview: "Dashboard Utama", sources: "Sumber data", evaluation: "Hasil evaluasi", history: "Riwayat evaluasi", system: "Pengaturan model" };
+  const descriptions = { overview: "Lihat sumber data yang tersedia dan hasil evaluasi chatbot.", sources: "Kelola dokumen, tabel, dan kasus yang menjadi rujukan chatbot.", evaluation: "Periksa hasil per soal, perubahan skor, dan sumber yang mendasari jawaban.", history: "Bandingkan hasil evaluasi setelah sumber data diperbarui.", system: "Koneksi model lokal, konfigurasi pencarian, dan kesiapan layanan training." };
+  const formatDate = (value?: string) => value ? new Date(value).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) + " WIB" : "Belum ada evaluasi";
+  const pct = (value?: number | null) => value == null ? "—" : value.toFixed(1);
+  function chooseSourceTab(source: RagSourceType) { setPdfFile(null); setExcelFile(null); setActiveStudioTab(source); }
+  function openSource(domain?: TaxDomainCode) { if (domain) { setPdfDomain(domain); setExcelDomain(domain); } chooseSourceTab("pdf_regulasi"); setPage("sources"); }
 
-  return (
-    <div className="audit-shell" data-audit-theme={surfaceTheme}>
-      <div className="audit-container">
-        {/* 1. TELEMETRY HEADER */}
-        <section className="audit-telemetry-bar">
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-                flexWrap: "wrap",
-              }}
-            >
-              <TerminalWindowIcon size={20} weight="bold" color="#1d4ed8" />
-              <h1
-                style={{
-                  fontSize: "17px",
-                  fontWeight: 700,
-                  letterSpacing: "-0.015em",
-                }}
-              >
-                DASHBOARD PELATIHAN PENGETAHUAN & AUDIT KEPINTARAN AI
-              </h1>
-              <span
-                className="font-mono-tabular"
-                style={{
-                  padding: "2px 8px",
-                  borderRadius: "4px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  backgroundColor: hw?.ollama_online ? "#059669" : "#1d4ed8",
-                  color: "#ffffff",
-                }}
-              >
-                {hw?.primary_llm || "gemma4:12b"}:{" "}
-                {hw?.ollama_online ? "OLLAMA LIVE" : "GROUNDED LOCAL ENGINE"}
-              </span>
+  const coverageTable = <div className="jst-table-scroll"><table className="jst-table jst-coverage-table"><caption className="jst-sr-only">Ketersediaan sumber per kategori pajak</caption><thead><tr><th>Pajak</th><th>PDF</th><th>Tabel</th><th>Kasus</th><th>Cakupan</th></tr></thead><tbody>{TAX_DOMAINS.map(domain => {
+    const row = vs?.domain_matrix?.[domain];
+    const filled = (Object.keys(SOURCE_TYPE_LABELS) as RagSourceType[]).filter(key => (row?.[key] ?? 0) > 0).length;
+    return <tr key={domain}><th scope="row">{domain}</th>{(["pdf_regulasi", "excel_data", "user_reasoning"] as RagSourceType[]).map(key => <td key={key} className={row?.[key] ? "" : "jst-empty-cell"}>{row?.[key] ?? (data ? 0 : "—")}</td>)}<td><span className="jst-coverage-dots" aria-label={`${filled} dari 3 jenis sumber tersedia`}>{[0, 1, 2].map(i => <i key={i} className={i < filled ? "is-filled" : ""} />)}</span></td></tr>;
+  })}</tbody></table></div>;
+
+  const scorePanel = <aside className="jst-score-panel" aria-label="Hasil evaluasi terakhir">
+    <div className="jst-section-kicker">EVALUASI TERAKHIR <span>01</span></div>
+    <div className="jst-main-score">{pct(snap?.smarttax_iq_percentage)}<span>/100</span></div>
+    <div className="jst-score-caption"><strong>Skor evaluasi RAG</strong>{snap && <DeltaPill delta={snap.delta_change} />}</div>
+    <p className="jst-note">{snap ? "Skor ini mengukur kecocokan teks dengan sumber. Belum menilai jawaban langsung dari model." : "Belum ada evaluasi. Skor akan tersedia setelah sumber dan dataset uji resmi siap."}</p>
+    <div className="jst-score-rule"><span style={{ width: `${Math.min(100, Math.max(0, snap?.smarttax_iq_percentage ?? 0))}%` }} /><i /></div>
+    <div className="jst-threshold">Ambang internal <strong>75 / 100</strong></div>
+    <dl className="jst-metric-ledger">
+      <div><dt>Rubrik soal <small>40%</small></dt><dd>{pct(snap?.golden_eval_accuracy)}<small>%</small></dd></div>
+      <div><dt>Kemiripan sumber <small>25%</small></dt><dd>{pct(snap?.faithfulness_score)}<small>%</small></dd></div>
+      <div><dt>Kemiripan pencarian <small>20%</small></dt><dd>{pct(snap?.retrieval_precision)}<small>%</small></dd></div>
+      <div><dt>Kelengkapan sumber <small>15%</small></dt><dd>{pct(snap?.domain_coverage)}<small>%</small></dd></div>
+    </dl>
+    <button className="jst-text-button" onClick={() => setPage("evaluation")}>Lihat hasil per soal <ArrowUpRightIcon size={16} /></button>
+  </aside>;
+
+  return <div className="jst-workspace" data-jst-theme={surfaceTheme}>
+    {chunksOpen && <ChunkDetailPanel onClose={() => setChunksOpen(false)} />}
+    <a href="#jst-main" className="jst-skip-link">Lewati ke isi dashboard</a>
+    <aside className="jst-sidebar">
+      <div className="jst-brand"><span className="jst-monogram">ST</span><div>Jakarta SmartTax<small>PENGELOLAAN CHATBOT</small></div></div>
+      <div className="jst-sidebar-label">ADMINISTRASI</div>
+      <nav aria-label="Navigasi dashboard">{([
+        ["overview", "Ringkasan", SquaresFourIcon], ["sources", "Sumber data", FoldersIcon], ["evaluation", "Evaluasi", ShieldCheckIcon], ["history", "Riwayat", ClockCounterClockwiseIcon], ["system", "Pengaturan", SlidersHorizontalIcon],
+      ] as const).map(([key, label, Icon]) => <button key={key} onClick={() => setPage(key)} aria-current={page === key ? "page" : undefined}><Icon size={19} weight={page === key ? "fill" : "regular"} /><span>{label}</span>{key === "sources" && <small>{vs?.total_chunks ?? "—"}</small>}</button>)}</nav>
+      <div className="jst-sidebar-bottom"><div className="jst-model-status"><i className={hw?.ollama_online ? "is-online" : ""} /><div>{hw?.primary_llm || "Model lokal"}<small>{!data ? "Status belum tersedia" : hw?.ollama_online ? "Ollama terhubung" : "Ollama tidak terhubung"}</small></div></div>{onBackToChat && <button className="jst-chat-link" onClick={onBackToChat}><ArrowLeftIcon size={16} /> Buka ruang chat <ArrowUpRightIcon size={16} /></button>}</div>
+    </aside>
+    <div className="jst-content-scroll" key={page}>
+      <div className="jst-topbar"><span>Jakarta SmartTax <span className="jst-breadcrumb-separator">/</span> <strong>{page === "overview" ? "Ringkasan" : page === "sources" ? "Sumber data" : page === "evaluation" ? "Evaluasi" : page === "history" ? "Riwayat" : "Pengaturan"}</strong></span><div className="jst-topbar-actions">{onBackToChat && <button className="jst-mobile-chat" onClick={onBackToChat} aria-label="Buka ruang chat"><ArrowUpRightIcon size={16} /><span>Chat</span></button>}<button className="jst-theme-button" onClick={() => setSurfaceTheme(theme => theme === "light" ? "dark" : "light")} aria-label={surfaceTheme === "light" ? "Aktifkan mode gelap" : "Aktifkan mode terang"}>{surfaceTheme === "light" ? <MoonIcon size={17} /> : <SunIcon size={17} />}</button></div></div>
+      <main id="jst-main" className="jst-main" tabIndex={-1}>
+        <header className="jst-page-header"><div><div className="jst-eyebrow">JAKARTA SMARTTAX / DASHBOARD</div><h1 tabIndex={-1}>{titles[page]}</h1><p>{descriptions[page]}</p></div><button className="jst-button jst-button-primary" disabled={busy} title={data?.evaluation_readiness?.reason} onClick={handleRunBenchmark}>{isEvaluating ? <ArrowsClockwiseIcon size={17} className="jst-spin" /> : <PlayIcon size={17} weight="fill" />}{isEvaluating ? "Mengevaluasi…" : "Jalankan evaluasi"}</button></header>
+        {statusBanner && <div className={`jst-notice ${statusBanner.type === "error" ? "is-error" : ""}`} role={statusBanner.type === "error" ? "alert" : "status"}><span>{statusBanner.type === "error" ? <WarningIcon size={18} /> : <CheckCircleIcon size={18} />}{statusBanner.text}</span><button onClick={() => setStatusBanner(null)} aria-label="Tutup pemberitahuan"><XCircleIcon size={19} /></button></div>}
+        {loading && !data && <div className="jst-loading" role="status">Memuat sumber dan hasil evaluasi…</div>}
+        {!loading && !data && <div className="jst-empty-state"><DatabaseIcon size={28} /><h2>Data dashboard belum tersedia</h2><p>Periksa koneksi backend lalu muat ulang data.</p><button className="jst-button" onClick={fetchTelemetry}>Coba lagi</button></div>}
+
+        {data && vs?.total_chunks === 0 && <section className="jst-empty-data" aria-labelledby="empty-data-title"><DatabaseIcon size={24} /><div><h2 id="empty-data-title">Belum ada sumber yang siap digunakan</h2><p>Belum ada sumber data yang dapat digunakan chatbot.</p></div>{page !== "sources" && <button className="jst-button" onClick={() => openSource()}>Tambah sumber <PlusIcon size={15} /></button>}</section>}
+        {data && !snap && <p className="jst-readiness-note">{data.evaluation_readiness.reason} Skor dan riwayat evaluasi belum tersedia.</p>}
+        {page === "overview" && <>
+          <section className="jst-summary-strip" aria-label="Ringkasan data"><div className="jst-text-summary"><div className="jst-text-summary-top"><strong>{vs?.total_chunks ?? "—"}</strong><span>Bagian teks<small>Dari {vs?.total_documents ?? "—"} sumber</small></span></div><p>Isi dibagi menjadi bagian kecil agar mudah dicari chatbot.</p><button className="jst-text-button" disabled={!vs} aria-haspopup="dialog" aria-expanded={chunksOpen} onClick={() => setChunksOpen(true)}>Lihat rincian <ArrowUpRightIcon size={14} /></button></div><div><strong>{vs ? `${vs.covered_slots}/${vs.total_slots}` : "—"}</strong><span>Jenis sumber tersedia<small>6 pajak × 3 jenis sumber</small></span></div><div><strong>{snap ? `${statusCounts.pass}/${statusCounts.total}` : "—"}</strong><span>Soal yang memenuhi ambang<small>berdasarkan rubrik internal</small></span></div><div className="jst-last-eval"><span>Evaluasi terakhir<small>{formatDate(snap?.timestamp)}</small></span><ClockCounterClockwiseIcon size={20} /></div></section>
+          <div className="jst-knowledge-grid"><KnowledgeNeuralMap telemetry={vs} />{scorePanel}</div>
+          <div className="jst-bottom-grid"><section className="jst-section"><div className="jst-section-heading"><div><span className="jst-eyebrow">KETERSEDIAAN SUMBER</span><h2>Sumber per jenis pajak</h2></div><button className="jst-icon-button" aria-label="Buka sumber data" onClick={() => openSource()}><ArrowUpRightIcon size={20} /></button></div>{coverageTable}<p className="jst-note jst-table-note">Angka menunjukkan potongan sumber; titik menunjukkan jenis sumber yang tersedia.</p></section>
+          <section className="jst-section"><div className="jst-section-heading"><div><span className="jst-eyebrow">CATATAN KERJA</span><h2>Yang perlu dilengkapi</h2></div><span className="jst-count">{vs ? missingDomains.length : "—"}</span></div>{!vs ? <p className="jst-note">Menunggu data sumber.</p> : missingDomains.length ? <div className="jst-attention-list">{missingDomains.map((item, index) => <button key={item.domain} onClick={() => openSource(item.domain)}><span className="jst-list-index">0{index + 1}</span><span><strong>{item.domain}</strong><small>Belum ada {item.missing.map(key => ({pdf_regulasi:"Dokumen PDF",excel_data:"tabel data",user_reasoning:"contoh kasus"}[key])).join(" & ")}</small></span><ArrowUpRightIcon size={18} /></button>)}</div> : <div className="jst-empty-state"><CheckCircleIcon size={28} /><p>Semua jenis sumber tersedia. Lanjutkan pemeriksaan kualitas melalui evaluasi.</p></div>}<div className="jst-training-note"><span className="jst-training-dot" /><div><strong>Fine tuning belum terhubung</strong><p>Dashboard ini memantau sumber dan evaluasi RAG. Progres training akan tersedia setelah layanan trainer terintegrasi.</p></div></div></section></div>
+        </>}
+
+        {page === "sources" && <>
+          <div className="jst-source-layout"><section className="jst-section jst-source-editor"><div className="jst-section-heading"><div><span className="jst-eyebrow">01 / TAMBAH RUJUKAN</span><h2>Tambah sumber data</h2></div><UploadSimpleIcon size={23} /></div><div className="jst-source-tabs" role="tablist" aria-label="Jenis sumber">{(["pdf_regulasi", "excel_data", "user_reasoning"] as RagSourceType[]).map(key => <button key={key} role="tab" aria-selected={activeStudioTab === key} aria-controls="jst-source-panel" id={`jst-tab-${key}`} tabIndex={activeStudioTab === key ? 0 : -1} onKeyDown={e => { if (["ArrowRight", "ArrowLeft", "Home", "End"].includes(e.key)) { e.preventDefault(); const keys: RagSourceType[] = ["pdf_regulasi", "excel_data", "user_reasoning"]; const next = e.key === "Home" ? 0 : e.key === "End" ? 2 : (keys.indexOf(key) + (e.key === "ArrowRight" ? 1 : 2)) % 3; chooseSourceTab(keys[next]); document.getElementById(`jst-tab-${keys[next]}`)?.focus(); } }} onClick={() => chooseSourceTab(key)}><SourceIcon sourceType={key} size={17} />{key === "pdf_regulasi" ? "Dokumen PDF" : key === "excel_data" ? "Tabel data" : "Contoh kasus"}</button>)}</div>
+            <div id="jst-source-panel" role="tabpanel" aria-labelledby={`jst-tab-${activeStudioTab}`}>
+            {activeStudioTab !== "user_reasoning" ? <form onSubmit={activeStudioTab === "pdf_regulasi" ? handlePdfSubmit : handleExcelSubmit} className="jst-form" key={activeStudioTab}>
+              <div className="jst-form-row"><label htmlFor="source-domain">Kategori pajak<select id="source-domain" value={activeStudioTab === "pdf_regulasi" ? pdfDomain : excelDomain} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfDomain(e.target.value as TaxDomainCode) : setExcelDomain(e.target.value as TaxDomainCode)}>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select></label><label htmlFor="source-contributor">Kontributor / unit kerja<input required id="source-contributor" value={activeStudioTab === "pdf_regulasi" ? pdfContributor : excelContributor} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfContributor(e.target.value) : setExcelContributor(e.target.value)} /></label></div>
+              <label className="jst-upload-field" htmlFor="source-file"><UploadSimpleIcon size={30} weight="light" /><strong>{activeStudioTab === "pdf_regulasi" ? "Pilih dokumen PDF" : "Pilih tabel data pajak"}</strong><span>{activeStudioTab === "pdf_regulasi" ? "PDF · Dokumen rujukan proyek" : "XLSX / XLS / CSV · Tarif, ketetapan, atau rekapitulasi"}</span><input required id="source-file" type="file" accept={activeStudioTab === "pdf_regulasi" ? ".pdf" : ".xlsx,.xls,.csv"} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfFile(e.target.files?.[0] ?? null) : setExcelFile(e.target.files?.[0] ?? null)} /></label>
+              <p className="jst-note">Sumber akan diproses untuk pencarian RAG. Evaluasi otomatis berjalan jika dataset uji resmi sudah tersedia.</p><div className="jst-form-actions"><button className="jst-button jst-button-primary" disabled={busy || !(activeStudioTab === "pdf_regulasi" ? pdfFile : excelFile)} type="submit"><PlusIcon size={17} />{isIngesting ? "Memproses sumber…" : "Simpan sumber"}</button></div>
+            </form> : <form className="jst-form" onSubmit={handleReasoningSubmit}><div className="jst-form-row"><label htmlFor="case-domain">Kategori pajak<select id="case-domain" value={reasoningForm.topik_pajak} onChange={e => setReasoningForm(form => ({...form,topik_pajak:e.target.value as TaxDomainCode}))}>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select></label><label htmlFor="case-contributor">Kontributor / unit kerja<input required id="case-contributor" value={reasoningForm.kontributor} onChange={e => setReasoningForm(form => ({...form,kontributor:e.target.value}))} /></label></div>{([ ["pertanyaan_kasus", "Pertanyaan kasus"], ["alur_penalaran", "Penjelasan & dasar rujukan"], ["jawaban_final", "Jawaban yang diharapkan"] ] as const).map(([key,label]) => <label key={key} htmlFor={`case-${key}`}>{label}<textarea id={`case-${key}`} required rows={key === "alur_penalaran" ? 5 : 3} value={reasoningForm[key]} onChange={e => setReasoningForm(form => ({...form,[key]:e.target.value}))} /></label>)}<p className="jst-note">Contoh kasus disimpan sebagai rujukan RAG. Proses ini belum mengubah bobot model.</p><button className="jst-button jst-button-primary" disabled={busy} type="submit"><PlusIcon size={17} />{isIngesting ? "Menyimpan…" : "Simpan sumber"}</button></form>}
             </div>
+          </section><aside className="jst-section"><span className="jst-eyebrow">02 / CAKUPAN</span><h2 className="jst-aside-title">Sumber yang tersedia</h2>{coverageTable}<p className="jst-note jst-table-note">{vs?.total_chunks ?? "—"} potongan sumber dalam koleksi {vs?.collection || "—"}.</p></aside></div>
+          <section className="jst-section"><div className="jst-section-heading"><div><span className="jst-eyebrow">ARSIP MASUK</span><h2>Sumber terbaru</h2></div><span className="jst-count">{vs?.recent_sources.length ?? "—"}</span></div>{vs?.recent_sources.length ? <div className="jst-source-list">{vs.recent_sources.map((source,i) => <div key={`${source.doc_name}-${source.ingested_at}-${i}`}><span className="jst-file-icon"><SourceIcon sourceType={source.source_type} size={23} /></span><span><strong>{source.doc_name}</strong><small>{source.domain} · {source.contributor}</small></span><time>{formatDate(source.ingested_at)}</time></div>)}</div> : <p className="jst-note">Belum ada sumber yang tercatat.</p>}</section>
+        </>}
 
-            <div
-              className="font-mono-tabular"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flexWrap: "wrap",
-                fontSize: "12px",
-                color: "var(--audit-text-secondary)",
-              }}
-            >
-              <span>
-                HW: {hw?.gpu || "RTX 5060 Ti"} {hw?.vram_gb || 8}GB VRAM
-              </span>
-              <span>|</span>
-              <span>KV: {hw?.kv_cache_type || "q8_0"}</span>
-              <span>|</span>
-              <span>Ctx: {hw?.num_ctx || 4096}</span>
-              <span>|</span>
-              <span>
-                FlashAttn: {hw?.flash_attention !== false ? "1" : "0"}
-              </span>
-              <span>|</span>
-              <span>Embed: {hw?.embedding_model || "nomic-embed-text"}</span>
-              <span>|</span>
-              <span>
-                Total Dokumen/Chunk Tersimpan: {vs?.total_chunks ?? 0}
-              </span>
-            </div>
-          </div>
+        {page === "evaluation" && <>
+          <div className="jst-evaluation-intro"><div><span className="jst-eyebrow">DATASET UJI</span><h2>{snap ? `${statusCounts.total} soal untuk memeriksa pengetahuan.` : data?.evaluation_readiness.golden_items ? "Dataset uji belum dievaluasi." : "Dataset uji resmi belum tersedia."}</h2><p className="jst-note">{snap ? "Evaluasi menggunakan jawaban yang disusun dari korpus. Kemiripan sumber tidak membuktikan kebenaran hukum." : "Siapkan sumber, soal, dan jawaban acuan resmi sebelum menjalankan evaluasi."}</p></div>{snap && <div className="jst-result-counts"><span><i className="is-pass" />{statusCounts.pass} lulus</span><span><i className="is-partial" />{statusCounts.partial} cukup</span><span><i className="is-fail" />{statusCounts.fail} belum lulus</span></div>}</div>
+          <section className="jst-section"><div className="jst-filters"><label className="jst-sr-only" htmlFor="filter-domain">Filter kategori pajak</label><select id="filter-domain" value={domainFilter} onChange={e => setDomainFilter(e.target.value)}><option value="ALL">Semua pajak</option>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select><label className="jst-sr-only" htmlFor="filter-status">Filter hasil</label><select id="filter-status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}><option value="ALL">Semua hasil</option><option value="PASS">Lulus (≥75)</option><option value="PARTIAL">Cukup (60–74)</option><option value="FAIL">Belum lulus (&lt;60)</option></select><label className="jst-sr-only" htmlFor="filter-source">Filter sumber</label><select id="filter-source" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}><option value="ALL">Semua sumber</option>{(Object.keys(SOURCE_TYPE_LABELS) as RagSourceType[]).map(key => <option key={key} value={key}>{SOURCE_TYPE_LABELS[key]}</option>)}</select><label className="jst-sr-only" htmlFor="filter-search">Cari soal atau kata kunci</label><input id="filter-search" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Cari soal atau kata kunci…" /></div>
+            <div className="jst-evidence-list">{filteredItems.map(item => <article key={item.id} className={`jst-evidence-item ${expandedRows[item.id] ? "is-open" : ""}`}><button className="jst-evidence-toggle" onClick={() => toggleRowExpand(item.id)} aria-expanded={!!expandedRows[item.id]} aria-controls={`evidence-${item.id}`}><span className="jst-question-id">{item.id}<small>{item.domain}</small></span><span className="jst-question-text">{item.pertanyaan}</span><span className="jst-evidence-score">{item.current_score.toFixed(1)}<small>/100</small></span><span className={`jst-status-label is-${item.status.toLowerCase()}`}>{item.status === "PASS" ? "Lulus" : item.status === "PARTIAL" ? "Cukup" : "Belum lulus"}</span>{expandedRows[item.id] ? <CaretDownIcon size={17} /> : <CaretRightIcon size={17} />}</button>
+              {expandedRows[item.id] && <div id={`evidence-${item.id}`} className="jst-evidence-detail"><p className="jst-reference"><strong>Acuan dataset</strong> {item.referensi_regulasi}</p><div className="jst-answer-comparison"><div><span className="jst-eyebrow">SEBELUM PENAMBAHAN SUMBER · {item.previous_score.toFixed(1)}</span><p>{item.previous_answer}</p></div><div><span className="jst-eyebrow">SETELAH PENAMBAHAN SUMBER · {item.current_score.toFixed(1)}</span><p>{item.current_answer}</p></div></div><div className="jst-reference-answer"><span className="jst-eyebrow">JAWABAN ACUAN DATASET</span><p>{item.kunci_jawaban}</p></div><dl className="jst-item-metrics"><div><dt>Kemiripan teks</dt><dd>{item.cosine_similarity_pct.toFixed(1)}%</dd></div><div><dt>Poin kunci</dt><dd>{item.keyword_hit_ratio_pct.toFixed(1)}%</dd></div><div><dt>Kemiripan sumber</dt><dd>{item.faithfulness_pct.toFixed(1)}%</dd></div><div><dt>Perubahan</dt><dd><DeltaPill delta={item.score_delta} /></dd></div></dl><p className="jst-note">Poin belum ditemukan: {item.missing_keywords.length ? item.missing_keywords.join(" · ") : "Seluruh poin kunci ditemukan."}</p><details className="jst-citations"><summary>{item.retrieved_sources.length} sumber rujukan</summary>{item.retrieved_sources.map((source,i) => <div key={`${source.chunk_id}-${i}`}><SourceIcon sourceType={source.source_type} size={18} /><div><strong>{source.doc_name}</strong><small>{source.domain} · Kemiripan {source.similarity.toFixed(1)}%</small><p>{source.excerpt}</p></div></div>)}</details></div>}
+            </article>)}{!filteredItems.length && <div className="jst-empty-state"><ShieldCheckIcon size={28} /><h3>{snap ? "Tidak ada soal yang cocok" : "Belum ada hasil evaluasi"}</h3><p>{snap ? "Ubah filter atau kata kunci pencarian." : "Hasil per soal akan muncul setelah sumber dan dataset uji resmi tersedia."}</p></div>}</div>
+          </section><p className="jst-note">Evaluasi terakhir: {formatDate(snap?.timestamp)}. Perubahan skor dinyatakan dalam poin persentase.</p>
+        </>}
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              flexWrap: "wrap",
-            }}
-          >
-            {onBackToChat && (
-              <button
-                type="button"
-                onClick={onBackToChat}
-                className="audit-secondary-btn"
-              >
-                <span>Kembali ke Ruang Chat</span>
-              </button>
-            )}
+        {page === "history" && <><section className="jst-section"><div className="jst-section-heading"><div><span className="jst-eyebrow">RIWAYAT EVALUASI</span><h2>Hasil evaluasi dari waktu ke waktu</h2></div><span className="jst-count">{timeline.length} evaluasi</span></div><ScoreHistory points={timeline.map(point => ({id:point.snapshot_id,value:point.smarttax_iq_percentage,label:formatDate(point.timestamp)}))} /><p className="jst-note">Skor heuristik antar evaluasi; bukan kurva loss training model.</p></section><section className="jst-section"><div className="jst-table-scroll"><table className="jst-table jst-history-table"><caption className="jst-sr-only">Riwayat evaluasi RAG</caption><thead><tr><th>Waktu / WIB</th><th>Aktivitas</th><th>Sumber</th><th>Skor</th><th>Perubahan</th></tr></thead><tbody>{[...timeline].reverse().map(point => <tr key={point.snapshot_id}><td>{formatDate(point.timestamp)}</td><td>{point.trigger_event}</td><td>{point.total_chunks_indexed}</td><td><strong>{point.smarttax_iq_percentage.toFixed(2)}</strong></td><td><DeltaPill delta={point.delta_change} /></td></tr>)}</tbody></table></div>{!timeline.length && <p className="jst-note">Belum ada riwayat evaluasi.</p>}</section></>}
 
-            <button
-              type="button"
-              onClick={() =>
-                setSurfaceTheme((t) => (t === "dark" ? "light" : "dark"))
-              }
-              className="audit-secondary-btn"
-              title="Ubah mode warna Terang / Gelap"
-            >
-              {surfaceTheme === "dark" ? (
-                <>
-                  <SunIcon size={15} weight="bold" />
-                  <span>Mode Terang</span>
-                </>
-              ) : (
-                <>
-                  <MoonIcon size={15} weight="bold" />
-                  <span>Mode Gelap</span>
-                </>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetBaseline}
-              disabled={isIngesting || isEvaluating}
-              className="audit-secondary-btn"
-              title="Kembalikan skor AI ke kondisi awal (75.61%) untuk mengulang simulasi"
-            >
-              <ArrowsClockwiseIcon size={15} weight="bold" />
-              <span>Reset ke Awal (75.61%)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleRunBenchmark}
-              disabled={isEvaluating || isIngesting}
-              className="audit-primary-btn"
-            >
-              {isEvaluating ? (
-                <>
-                  <ArrowsClockwiseIcon size={15} weight="bold" />
-                  <span>Sedang Menguji AI...</span>
-                </>
-              ) : (
-                <>
-                  <PlayIcon size={15} weight="fill" />
-                  <span>Uji Ulang Kepintaran AI</span>
-                </>
-              )}
-            </button>
-          </div>
-        </section>
-
-        {/* PANDUAN PENGGUNAAN MUDAH (UNTUK PENGGUNA AWAM) */}
-        <section
-          className="audit-card"
-          style={{
-            border: "1px solid #1d4ed8",
-            background:
-              surfaceTheme === "dark"
-                ? "rgba(29, 78, 216, 0.08)"
-                : "rgba(29, 78, 216, 0.05)",
-            padding: "16px 18px",
-            gap: "12px",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: "14px",
-                  fontWeight: 700,
-                  marginBottom: "3px",
-                }}
-              >
-                Cara Mudah Menggunakan Halaman Ini (3 Langkah)
-              </div>
-              <div
-                style={{
-                  fontSize: "12.5px",
-                  color: "var(--audit-text-secondary)",
-                }}
-              >
-                Halaman ini digunakan untuk menambahkan aturan/data pajak baru ke AI dan melihat bukti kenaikan kepintaran AI secara langsung.
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleRunFullAutoDemo}
-              disabled={isIngesting || isEvaluating}
-              className="audit-primary-btn"
-              style={{ padding: "9px 14px", fontSize: "12.5px" }}
-            >
-              <PlayIcon size={15} weight="fill" />
-              <span>
-                {isIngesting
-                  ? "Sedang Melatih AI..."
-                  : "Klik di Sini: Simulasi Latih AI Otomatis (75.61% ke 81.50%)"}
-              </span>
-            </button>
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: "10px",
-            }}
-          >
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "6px",
-                background: "var(--audit-surface)",
-                border: "1px solid var(--audit-border)",
-                fontSize: "12px",
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: "4px" }}>
-                Langkah 1: Tambah Data Pengetahuan AI
-              </div>
-              <div style={{ color: "var(--audit-text-secondary)", lineHeight: 1.45 }}>
-                Pilih salah satu tab di kotak <strong>Pusat Tambah Pengetahuan AI</strong> di bawah (Upload PDF Aturan, Tabel Excel, atau Contoh Kasus), atau klik tombol biru <strong>Simulasi Latih AI Otomatis</strong> di kanan atas.
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "6px",
-                background: "var(--audit-surface)",
-                border: "1px solid var(--audit-border)",
-                fontSize: "12px",
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: "4px" }}>
-                Langkah 2: Lihat Kenaikan Skor Kepintaran AI
-              </div>
-              <div style={{ color: "var(--audit-text-secondary)", lineHeight: 1.45 }}>
-                Perhatikan 4 kartu skor di bawah ini. Saat AI mempelajari aturan baru, <strong>Skor Kepintaran AI (SmartTax IQ)</strong> akan naik dari <strong>75.61%</strong> hingga <strong>81.50%</strong> dan soal yang tadinya belum lulus menjadi <strong>LULUS</strong>.
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: "10px 12px",
-                borderRadius: "6px",
-                background: "var(--audit-surface)",
-                border: "1px solid var(--audit-border)",
-                fontSize: "12px",
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: "4px" }}>
-                Langkah 3: Cek Bukti Jawaban (Sebelum vs Sesudah)
-              </div>
-              <div style={{ color: "var(--audit-text-secondary)", lineHeight: 1.45 }}>
-                Di tabel bagian paling bawah, klik baris soal (misalnya <strong>GD-002</strong> atau <strong>GD-006</strong>) untuk melihat perbandingan jawaban AI <em>sebelum dilatih</em> dan <em>sesudah dilatih</em>.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {statusBanner && (
-          <div
-            style={{
-              padding: "11px 16px",
-              borderRadius: "8px",
-              border: `1px solid ${
-                statusBanner.type === "success" ? "#059669" : "#dc2626"
-              }`,
-              backgroundColor:
-                statusBanner.type === "success"
-                  ? "rgba(5, 150, 105, 0.12)"
-                  : "rgba(220, 38, 38, 0.12)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              fontSize: "13px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              {statusBanner.type === "success" ? (
-                <CheckCircleIcon size={16} weight="bold" color="#059669" />
-              ) : (
-                <WarningIcon size={16} weight="bold" color="#dc2626" />
-              )}
-              <span>{statusBanner.text}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setStatusBanner(null)}
-              style={{
-                background: "transparent",
-                border: "none",
-                cursor: "pointer",
-                fontSize: "12px",
-                color: "var(--audit-text-secondary)",
-              }}
-            >
-              Tutup
-            </button>
-          </div>
-        )}
-
-        {/* 2. 4-CARD BENTO METRIC GRID */}
-        <section className="audit-bento-grid">
-          <div className="audit-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--audit-text-secondary)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                1. Skor Kepintaran AI (SmartTax IQ)
-              </span>
-              <ChartLineUpIcon size={18} weight="bold" color="#1d4ed8" />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                gap: "10px",
-                marginTop: "4px",
-              }}
-            >
-              <span
-                className="font-mono-tabular"
-                style={{ fontSize: "30px", fontWeight: 700, lineHeight: 1.1 }}
-              >
-                {(snap?.smarttax_iq_percentage ?? 0).toFixed(2)}%
-              </span>
-              <DeltaPill delta={snap?.delta_change ?? 0} />
-            </div>
-
-            <div
-              style={{ fontSize: "11.5px", color: "var(--audit-text-muted)", lineHeight: 1.4 }}
-            >
-              Nilai gabungan kualitas jawaban AI secara keseluruhan (Target Lulus &gt;= 75%)
-            </div>
-          </div>
-
-          <div className="audit-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--audit-text-secondary)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                2. Ketepatan Ujian Pajak (Bobot 40%)
-              </span>
-              <ShieldCheckIcon size={18} weight="bold" color="#059669" />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: "8px",
-                marginTop: "4px",
-              }}
-            >
-              <span
-                className="font-mono-tabular"
-                style={{ fontSize: "30px", fontWeight: 700, lineHeight: 1.1 }}
-              >
-                {(snap?.golden_eval_accuracy ?? 0).toFixed(2)}%
-              </span>
-              <span
-                className="font-mono-tabular"
-                style={{
-                  fontSize: "11.5px",
-                  color: "var(--audit-text-secondary)",
-                }}
-              >
-                {statusCounts.pass}/{statusCounts.total} Soal Lulus
-              </span>
-            </div>
-
-            <div
-              className="font-mono-tabular"
-              style={{
-                display: "flex",
-                gap: "8px",
-                fontSize: "11.5px",
-                color: "var(--audit-text-muted)",
-              }}
-            >
-              <span style={{ color: "#059669" }}>
-                LULUS: {statusCounts.pass}
-              </span>
-              <span>|</span>
-              <span style={{ color: "#d97706" }}>
-                CUKUP: {statusCounts.partial}
-              </span>
-              <span>|</span>
-              <span style={{ color: "#dc2626" }}>
-                BELUM LULUS: {statusCounts.fail}
-              </span>
-            </div>
-          </div>
-
-          <div className="audit-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--audit-text-secondary)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                3. Kepatuhan Aturan / Anti-Mengarang (25%)
-              </span>
-              <GitDiffIcon size={18} weight="bold" color="#1d4ed8" />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                marginTop: "4px",
-              }}
-            >
-              <span
-                className="font-mono-tabular"
-                style={{ fontSize: "30px", fontWeight: 700, lineHeight: 1.1 }}
-              >
-                {(snap?.faithfulness_score ?? 0).toFixed(2)}%
-              </span>
-              <span
-                className="audit-badge audit-badge-pass font-mono-tabular"
-                style={{ fontSize: "10.5px" }}
-              >
-                SESUAI PERDA/PERGUB
-              </span>
-            </div>
-
-            <div
-              style={{ fontSize: "11.5px", color: "var(--audit-text-muted)", lineHeight: 1.4 }}
-            >
-              Mengukur apakah jawaban AI murni dari dokumen resmi (tidak mengarang bebas)
-            </div>
-          </div>
-
-          <div className="audit-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: "var(--audit-text-secondary)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.03em",
-                }}
-              >
-                4. Akurasi Cari (20%) & Kelengkapan (15%)
-              </span>
-              <DatabaseIcon size={18} weight="bold" color="#1d4ed8" />
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: "10px",
-                marginTop: "4px",
-              }}
-            >
-              <div>
-                <span
-                  className="font-mono-tabular"
-                  style={{ fontSize: "24px", fontWeight: 700 }}
-                >
-                  {(snap?.retrieval_precision ?? 0).toFixed(1)}%
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--audit-text-muted)",
-                    marginLeft: "4px",
-                  }}
-                >
-                  Akurasi Cari
-                </span>
-              </div>
-              <div>
-                <span
-                  className="font-mono-tabular"
-                  style={{ fontSize: "24px", fontWeight: 700 }}
-                >
-                  {(snap?.domain_coverage ?? 0).toFixed(1)}%
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--audit-text-muted)",
-                    marginLeft: "4px",
-                  }}
-                >
-                  Kelengkapan
-                </span>
-              </div>
-            </div>
-
-            <div
-              style={{ fontSize: "11.5px", color: "var(--audit-text-muted)" }}
-            >
-              Materi Pajak Terisi: {vs?.covered_slots ?? 0} dari {vs?.total_slots ?? 18} slot (6 Jenis Pajak x 3 Jenis File)
-            </div>
-          </div>
-        </section>
-
-        {/* 3. 3-TAB INGESTION STUDIO & DOMAIN COVERAGE MATRIX */}
-        <section className="audit-studio-grid">
-          <div className="audit-card" style={{ justifyContent: "flex-start" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                flexWrap: "wrap",
-                borderBottom: "1px solid var(--audit-border)",
-                paddingBottom: "12px",
-              }}
-            >
-              <div>
-                <h2 style={{ fontSize: "15px", fontWeight: 700 }}>
-                  PUSAT TAMBAH PENGETAHUAN AI
-                </h2>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--audit-text-secondary)",
-                  }}
-                >
-                  Ajarkan AI aturan atau data baru: upload PDF peraturan, tabel
-                  Excel/CSV, atau tulis contoh kasus beserta jawabannya
-                </p>
-              </div>
-
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                {(
-                  [
-                    {
-                      id: "pdf_regulasi",
-                      label: "1. Upload PDF Peraturan",
-                      icon: <FilePdfIcon size={15} weight="bold" />,
-                    },
-                    {
-                      id: "excel_data",
-                      label: "2. Upload Tabel Excel",
-                      icon: <FileXlsIcon size={15} weight="bold" />,
-                    },
-                    {
-                      id: "user_reasoning",
-                      label: "3. Tulis Contoh Kasus",
-                      icon: <BrainIcon size={15} weight="bold" />,
-                    },
-                  ] as const
-                ).map((tab) => {
-                  const active = activeStudioTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveStudioTab(tab.id)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "7px 12px",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        border: active
-                          ? "1px solid #2563eb"
-                          : "1px solid var(--audit-border-strong)",
-                        backgroundColor: active
-                          ? "#1d4ed8"
-                          : "var(--audit-surface-elevated)",
-                        color: active ? "#ffffff" : "var(--audit-text)",
-                      }}
-                    >
-                      {tab.icon}
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {activeStudioTab === "pdf_regulasi" && (
-              <form
-                onSubmit={handlePdfSubmit}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                  marginTop: "4px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Jenis Pajak
-                    </label>
-                    <select
-                      value={pdfDomain}
-                      onChange={(e) =>
-                        setPdfDomain(e.target.value as TaxDomainCode)
-                      }
-                      className="audit-select"
-                    >
-                      {TAX_DOMAINS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Nama Anda / Unit Kerja
-                    </label>
-                    <input
-                      type="text"
-                      value={pdfContributor}
-                      onChange={(e) => setPdfContributor(e.target.value)}
-                      className="audit-input"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      marginBottom: "5px",
-                    }}
-                  >
-                    Pilih File PDF (Perda / Pergub / Kep Kaban / SOP)
-                  </label>
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-                    className="audit-input"
-                  />
-                  <div
-                    className="font-mono-tabular"
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--audit-text-muted)",
-                      marginTop: "5px",
-                    }}
-                  >
-                    AI akan membaca isi PDF, memecahnya per pasal, lalu menyimpannya
-                    sebagai bahan jawaban
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    marginTop: "4px",
-                  }}
-                >
-                  <button
-                    type="button"
-                    disabled={isIngesting}
-                    onClick={() =>
-                      handleSampleIngest("pdf", pdfDomain, pdfContributor)
-                    }
-                    className="audit-secondary-btn"
-                  >
-                    <FilePdfIcon size={15} weight="bold" />
-                    <span>
-                      Coba Pakai Contoh PDF ({pdfDomain})
-                    </span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={!pdfFile || isIngesting}
-                    className="audit-primary-btn"
-                  >
-                    <UploadSimpleIcon size={15} weight="bold" />
-                    <span>
-                      {isIngesting
-                        ? "Memproses PDF..."
-                        : "Upload & Ajarkan ke AI"}
-                    </span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {activeStudioTab === "excel_data" && (
-              <form
-                onSubmit={handleExcelSubmit}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "12px",
-                  marginTop: "4px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Jenis Pajak
-                    </label>
-                    <select
-                      value={excelDomain}
-                      onChange={(e) =>
-                        setExcelDomain(e.target.value as TaxDomainCode)
-                      }
-                      className="audit-select"
-                    >
-                      {TAX_DOMAINS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "5px",
-                      }}
-                    >
-                      Nama Anda / Unit Kerja
-                    </label>
-                    <input
-                      type="text"
-                      value={excelContributor}
-                      onChange={(e) => setExcelContributor(e.target.value)}
-                      className="audit-input"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      marginBottom: "5px",
-                    }}
-                  >
-                    Pilih File Tabel (.xlsx / .csv)
-                  </label>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={(e) => setExcelFile(e.target.files?.[0] || null)}
-                    className="audit-input"
-                  />
-                  <div
-                    className="font-mono-tabular"
-                    style={{
-                      fontSize: "11px",
-                      color: "var(--audit-text-muted)",
-                      marginTop: "5px",
-                    }}
-                  >
-                    Setiap baris tabel akan dibaca AI lengkap dengan judul kolomnya
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    flexWrap: "wrap",
-                    marginTop: "4px",
-                  }}
-                >
-                  <button
-                    type="button"
-                    disabled={isIngesting}
-                    onClick={() =>
-                      handleSampleIngest("excel", excelDomain, excelContributor)
-                    }
-                    className="audit-secondary-btn"
-                  >
-                    <FileXlsIcon size={15} weight="bold" />
-                    <span>
-                      Coba Pakai Contoh Excel ({excelDomain})
-                    </span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={!excelFile || isIngesting}
-                    className="audit-primary-btn"
-                  >
-                    <UploadSimpleIcon size={15} weight="bold" />
-                    <span>
-                      {isIngesting
-                        ? "Memproses Tabel..."
-                        : "Upload & Ajarkan ke AI"}
-                    </span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {activeStudioTab === "user_reasoning" && (
-              <form
-                onSubmit={handleReasoningSubmit}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "10px",
-                  marginTop: "4px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--audit-text-secondary)",
-                    }}
-                  >
-                    Isi otomatis dengan contoh:
-                  </span>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setReasoningForm(REASONING_PRESETS.JPB_SCBD)
-                      }
-                      className="audit-secondary-btn"
-                      style={{ padding: "4px 10px", fontSize: "11.5px" }}
-                    >
-                      Contoh 1: Pajak Gedung SCBD (GD-002)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setReasoningForm(REASONING_PRESETS.BPHTB_WARIS)
-                      }
-                      className="audit-secondary-btn"
-                      style={{ padding: "4px 10px", fontSize: "11.5px" }}
-                    >
-                      Contoh 2: BPHTB Warisan (GD-006)
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "10px",
-                  }}
-                >
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Jenis Pajak
-                    </label>
-                    <select
-                      value={reasoningForm.topik_pajak}
-                      onChange={(e) =>
-                        setReasoningForm((prev) => ({
-                          ...prev,
-                          topik_pajak: e.target.value as TaxDomainCode,
-                        }))
-                      }
-                      className="audit-select"
-                    >
-                      {TAX_DOMAINS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Nama Anda / Unit Kerja
-                    </label>
-                    <input
-                      type="text"
-                      value={reasoningForm.kontributor}
-                      onChange={(e) =>
-                        setReasoningForm((prev) => ({
-                          ...prev,
-                          kontributor: e.target.value,
-                        }))
-                      }
-                      className="audit-input"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Pertanyaan
-                  </label>
-                  <input
-                    type="text"
-                    value={reasoningForm.pertanyaan_kasus}
-                    onChange={(e) =>
-                      setReasoningForm((prev) => ({
-                        ...prev,
-                        pertanyaan_kasus: e.target.value,
-                      }))
-                    }
-                    className="audit-input"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Cara Menjawab & Dasar Hukumnya
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={reasoningForm.alur_penalaran}
-                    onChange={(e) =>
-                      setReasoningForm((prev) => ({
-                        ...prev,
-                        alur_penalaran: e.target.value,
-                      }))
-                    }
-                    className="audit-textarea"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label
-                    style={{
-                      display: "block",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Jawaban Akhir yang Benar
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={reasoningForm.jawaban_final}
-                    onChange={(e) =>
-                      setReasoningForm((prev) => ({
-                        ...prev,
-                        jawaban_final: e.target.value,
-                      }))
-                    }
-                    className="audit-textarea"
-                    required
-                  />
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    marginTop: "2px",
-                  }}
-                >
-                  <button
-                    type="submit"
-                    disabled={isIngesting}
-                    className="audit-primary-btn"
-                  >
-                    <BrainIcon size={15} weight="bold" />
-                    <span>
-                      {isIngesting
-                        ? "Menyimpan Penalaran..."
-                        : "Simpan Contoh Kasus & Uji Ulang AI"}
-                    </span>
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-
-          {/* RIGHT PANEL: DOMAIN COVERAGE MATRIX & AUDIT SNAPSHOT LOG */}
-          <div className="audit-card" style={{ justifyContent: "flex-start" }}>
-            <div
-              style={{
-                borderBottom: "1px solid var(--audit-border)",
-                paddingBottom: "10px",
-              }}
-            >
-              <h2 style={{ fontSize: "15px", fontWeight: 700 }}>
-                KELENGKAPAN MATERI PER JENIS PAJAK
-              </h2>
-              <p
-                style={{
-                  fontSize: "12px",
-                  color: "var(--audit-text-secondary)",
-                }}
-              >
-                Jumlah potongan materi yang sudah dipelajari AI untuk tiap jenis pajak
-              </p>
-            </div>
-
-            <div className="audit-table-wrap">
-              <table className="audit-table">
-                <thead>
-                  <tr>
-                    <th>Domain</th>
-                    <th>PDF Peraturan</th>
-                    <th>Tabel Excel</th>
-                    <th>Contoh Kasus</th>
-                    <th>Lengkap</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TAX_DOMAINS.map((dom) => {
-                    const row = vs?.domain_matrix?.[dom] || {
-                      pdf_regulasi: 0,
-                      excel_data: 0,
-                      user_reasoning: 0,
-                    };
-                    const filledCount =
-                      (row.pdf_regulasi > 0 ? 1 : 0) +
-                      (row.excel_data > 0 ? 1 : 0) +
-                      (row.user_reasoning > 0 ? 1 : 0);
-                    return (
-                      <tr key={dom}>
-                        <td
-                          className="font-mono-tabular"
-                          style={{ fontWeight: 700 }}
-                        >
-                          {dom}
-                        </td>
-                        <td className="font-mono-tabular">
-                          {row.pdf_regulasi}
-                        </td>
-                        <td className="font-mono-tabular">{row.excel_data}</td>
-                        <td className="font-mono-tabular">
-                          {row.user_reasoning}
-                        </td>
-                        <td>
-                          <span
-                            className={`audit-badge ${
-                              filledCount === 3
-                                ? "audit-badge-pass"
-                                : filledCount === 2
-                                ? "audit-badge-partial"
-                                : "audit-badge-fail"
-                            } font-mono-tabular`}
-                          >
-                            {filledCount}/3
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div style={{ marginTop: "6px" }}>
-              <div
-                style={{
-                  fontSize: "11.5px",
-                  fontWeight: 600,
-                  color: "var(--audit-text-secondary)",
-                  textTransform: "uppercase",
-                  marginBottom: "6px",
-                }}
-              >
-                Riwayat Perubahan Skor AI
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                  maxHeight: "135px",
-                  overflowY: "auto",
-                }}
-              >
-                {[...timeline].reverse().map((pt) => (
-                  <div
-                    key={pt.snapshot_id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "8px",
-                      padding: "6px 10px",
-                      borderRadius: "6px",
-                      background: "var(--audit-surface-elevated)",
-                      border: "1px solid var(--audit-border)",
-                      fontSize: "12px",
-                    }}
-                  >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {pt.trigger_event}
-                      </div>
-                      <div
-                        className="font-mono-tabular"
-                        style={{
-                          fontSize: "11px",
-                          color: "var(--audit-text-muted)",
-                        }}
-                      >
-                        {new Date(pt.timestamp).toLocaleString("id-ID")} |{" "}
-                        {pt.total_chunks_indexed} chunks
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                      }}
-                    >
-                      <span
-                        className="font-mono-tabular"
-                        style={{ fontWeight: 700 }}
-                      >
-                        {pt.smarttax_iq_percentage.toFixed(2)}%
-                      </span>
-                      <DeltaPill delta={pt.delta_change} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. AUDIT EVIDENCE & BEFORE/AFTER DIFF TABLE */}
-        <section
-          className="audit-card"
-          style={{ gap: "14px", padding: "20px" }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "12px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <h2 style={{ fontSize: "15.5px", fontWeight: 700 }}>
-                BUKTI JAWABAN AI: 8 SOAL UJIAN PAJAK (SEBELUM vs SESUDAH DILATIH)
-              </h2>
-              <p
-                style={{
-                  fontSize: "12px",
-                  color: "var(--audit-text-secondary)",
-                }}
-              >
-                Klik salah satu baris soal untuk melihat jawaban AI sebelum dan
-                sesudah dilatih, kunci jawaban resmi, serta dokumen yang dipakai
-                AI sebagai sumber
-              </p>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                flexWrap: "wrap",
-              }}
-            >
-              <SlidersHorizontalIcon size={16} weight="bold" />
-              <select
-                value={domainFilter}
-                onChange={(e) => setDomainFilter(e.target.value)}
-                className="audit-select"
-                style={{ width: "auto", padding: "6px 10px", fontSize: "12px" }}
-              >
-                <option value="ALL">Semua Jenis Pajak</option>
-                {TAX_DOMAINS.map((d) => (
-                  <option key={d} value={d}>
-                    Pajak: {d}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="audit-select"
-                style={{ width: "auto", padding: "6px 10px", fontSize: "12px" }}
-              >
-                <option value="ALL">Semua Hasil</option>
-                <option value="PASS">LULUS (&gt;=75%)</option>
-                <option value="PARTIAL">CUKUP (60-74%)</option>
-                <option value="FAIL">BELUM LULUS (&lt;60%)</option>
-              </select>
-
-              <select
-                value={sourceFilter}
-                onChange={(e) => setSourceFilter(e.target.value)}
-                className="audit-select"
-                style={{ width: "auto", padding: "6px 10px", fontSize: "12px" }}
-              >
-                <option value="ALL">Semua Sumber</option>
-                <option value="pdf_regulasi">PDF Peraturan</option>
-                <option value="excel_data">Tabel Excel/CSV</option>
-                <option value="user_reasoning">Contoh Kasus Ahli</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Cari soal / kata kunci..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="audit-input"
-                style={{ width: "180px", padding: "6px 10px", fontSize: "12px" }}
-              />
-            </div>
-          </div>
-
-          <div className="audit-table-wrap">
-            <table className="audit-table">
-              <thead>
-                <tr>
-                  <th style={{ width: "36px" }} />
-                  <th>No. Soal</th>
-                  <th>Pertanyaan Ujian</th>
-                  <th>Sumber yang Dipakai AI</th>
-                  <th>Rincian Nilai</th>
-                  <th>Nilai & Perubahan</th>
-                  <th>Hasil</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredItems.map((item) => {
-                  const isExpanded = !!expandedRows[item.id];
-                  return (
-                    <React.Fragment key={item.id}>
-                      <tr
-                        onClick={() => toggleRowExpand(item.id)}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <td>
-                          {isExpanded ? (
-                            <CaretDownIcon size={15} weight="bold" />
-                          ) : (
-                            <CaretRightIcon size={15} weight="bold" />
-                          )}
-                        </td>
-                        <td>
-                          <div
-                            className="font-mono-tabular"
-                            style={{ fontWeight: 700, fontSize: "13px" }}
-                          >
-                            {item.id}
-                          </div>
-                          <span
-                            className="font-mono-tabular"
-                            style={{
-                              display: "inline-block",
-                              marginTop: "3px",
-                              padding: "1px 6px",
-                              borderRadius: "4px",
-                              fontSize: "11px",
-                              background: "var(--audit-surface-elevated)",
-                              border: "1px solid var(--audit-border-strong)",
-                            }}
-                          >
-                            {item.domain}
-                          </span>
-                        </td>
-                        <td style={{ maxWidth: "420px" }}>
-                          <div style={{ fontWeight: 600, marginBottom: "4px" }}>
-                            {item.pertanyaan}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "11.5px",
-                              color: "var(--audit-text-muted)",
-                            }}
-                          >
-                            Acuan: {item.referensi_regulasi}
-                          </div>
-                        </td>
-                        <td>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: "5px",
-                            }}
-                          >
-                            {item.retrieved_sources.map((src) => (
-                              <button
-                                key={src.chunk_id}
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setExpandedRows((prev) => ({
-                                    ...prev,
-                                    [item.id]: true,
-                                  }));
-                                }}
-                                className="audit-source-pill font-mono-tabular"
-                                title={`${src.doc_name} (Sim: ${src.similarity}%)`}
-                              >
-                                <SourceIcon sourceType={src.source_type} />
-                                <span>{SOURCE_TYPE_LABELS[src.source_type]}</span>
-                                <span
-                                  style={{ color: "var(--audit-text-muted)" }}
-                                >
-                                  {src.similarity}%
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="font-mono-tabular">
-                          <div style={{ fontSize: "11.5px" }}>
-                            Kemiripan: {item.cosine_similarity_pct.toFixed(1)}%
-                          </div>
-                          <div style={{ fontSize: "11.5px" }}>
-                            Poin Kunci: {item.keyword_hit_ratio_pct.toFixed(1)}% (
-                            {item.matched_keywords.length}/
-                            {item.matched_keywords.length +
-                              item.missing_keywords.length}
-                            )
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "11.5px",
-                              color: "var(--audit-text-muted)",
-                            }}
-                          >
-                            Patuh Sumber: {item.faithfulness_pct.toFixed(1)}%
-                          </div>
-                        </td>
-                        <td className="font-mono-tabular">
-                          <div
-                            style={{
-                              fontSize: "14px",
-                              fontWeight: 700,
-                              marginBottom: "4px",
-                            }}
-                          >
-                            {item.current_score.toFixed(2)}%
-                          </div>
-                          <DeltaPill delta={item.score_delta} />
-                        </td>
-                        <td>
-                          <StatusBadge
-                            status={item.status}
-                            score={item.current_score}
-                          />
-                        </td>
-                      </tr>
-
-                      {isExpanded && (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            style={{
-                              background: "var(--audit-bg)",
-                              padding: "16px 20px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: "14px",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  flexWrap: "wrap",
-                                  gap: "8px",
-                                  padding: "8px 12px",
-                                  borderRadius: "6px",
-                                  background: "var(--audit-surface)",
-                                  border: "1px solid var(--audit-border)",
-                                  fontSize: "12px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "8px",
-                                  }}
-                                >
-                                  <GitDiffIcon
-                                    size={16}
-                                    weight="bold"
-                                    color="#1d4ed8"
-                                  />
-                                  <span style={{ fontWeight: 600 }}>
-                                    Perbandingan Jawaban Sebelum vs Sesudah Dilatih
-                                  </span>
-                                </div>
-                                <div
-                                  className="font-mono-tabular"
-                                  style={{
-                                    color: "var(--audit-text-secondary)",
-                                  }}
-                                >
-                                  Materi Terakhir Ditambahkan:{" "}
-                                  {item.ingested_source_meta.doc_name} (
-                                  {item.ingested_source_meta.source_type}) oleh{" "}
-                                  {item.ingested_source_meta.contributor}
-                                </div>
-                              </div>
-
-                              <div className="audit-diff-grid">
-                                <div
-                                  style={{
-                                    background: "var(--audit-surface)",
-                                    border: "1px solid var(--audit-border)",
-                                    borderRadius: "8px",
-                                    padding: "12px 14px",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      marginBottom: "6px",
-                                      fontSize: "11.5px",
-                                      fontWeight: 700,
-                                      color: "var(--audit-text-secondary)",
-                                    }}
-                                  >
-                                    <span>JAWABAN AI SEBELUM DILATIH</span>
-                                    <span className="font-mono-tabular">
-                                      Skor: {item.previous_score.toFixed(2)}%
-                                    </span>
-                                  </div>
-                                  <p
-                                    style={{
-                                      fontSize: "12.5px",
-                                      lineHeight: 1.55,
-                                      color: "var(--audit-text-secondary)",
-                                      whiteSpace: "pre-wrap",
-                                    }}
-                                  >
-                                    {item.previous_answer}
-                                  </p>
-                                </div>
-
-                                <div
-                                  style={{
-                                    background: "var(--audit-surface)",
-                                    border: "1px solid #1d4ed8",
-                                    borderRadius: "8px",
-                                    padding: "12px 14px",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      marginBottom: "6px",
-                                      fontSize: "11.5px",
-                                      fontWeight: 700,
-                                      color: "#1d4ed8",
-                                    }}
-                                  >
-                                    <span>JAWABAN AI SESUDAH DILATIH</span>
-                                    <span className="font-mono-tabular">
-                                      Skor: {item.current_score.toFixed(2)}% (
-                                      {item.score_delta >= 0 ? "+" : ""}
-                                      {item.score_delta.toFixed(2)}%)
-                                    </span>
-                                  </div>
-                                  <p
-                                    style={{
-                                      fontSize: "12.5px",
-                                      lineHeight: 1.55,
-                                      whiteSpace: "pre-wrap",
-                                    }}
-                                  >
-                                    {item.current_answer}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div
-                                style={{
-                                  background: "var(--audit-surface)",
-                                  border: "1px solid var(--audit-border)",
-                                  borderRadius: "8px",
-                                  padding: "12px 14px",
-                                  fontSize: "12.5px",
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    fontSize: "11.5px",
-                                    color: "var(--audit-text-secondary)",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  KUNCI JAWABAN RESMI:
-                                </div>
-                                <p style={{ marginBottom: "8px" }}>
-                                  {item.kunci_jawaban}
-                                </p>
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: "6px",
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <span
-                                    style={{
-                                      fontSize: "11.5px",
-                                      color: "var(--audit-text-muted)",
-                                    }}
-                                  >
-                                    Poin Wajib Disebut:
-                                  </span>
-                                  {item.matched_keywords.map((kw) => (
-                                    <span
-                                      key={kw}
-                                      className="audit-badge audit-badge-pass font-mono-tabular"
-                                      style={{ fontSize: "11px" }}
-                                    >
-                                      ADA: {kw}
-                                    </span>
-                                  ))}
-                                  {item.missing_keywords.map((kw) => (
-                                    <span
-                                      key={kw}
-                                      className="audit-badge audit-badge-fail font-mono-tabular"
-                                      style={{ fontSize: "11px" }}
-                                    >
-                                      TIDAK ADA: {kw}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns:
-                                    "repeat(auto-fit, minmax(260px, 1fr))",
-                                  gap: "10px",
-                                }}
-                              >
-                                {item.retrieved_sources.map((chunk) => (
-                                  <div
-                                    key={chunk.chunk_id}
-                                    style={{
-                                      background: "var(--audit-surface)",
-                                      border: "1px solid var(--audit-border)",
-                                      borderRadius: "7px",
-                                      padding: "10px 12px",
-                                      fontSize: "12px",
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        marginBottom: "4px",
-                                      }}
-                                    >
-                                      <span
-                                        className="font-mono-tabular"
-                                        style={{
-                                          display: "inline-flex",
-                                          alignItems: "center",
-                                          gap: "5px",
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        <SourceIcon
-                                          sourceType={chunk.source_type}
-                                        />
-                                        {chunk.source_type}
-                                      </span>
-                                      <span
-                                        className="font-mono-tabular"
-                                        style={{
-                                          color: "#059669",
-                                          fontWeight: 700,
-                                        }}
-                                      >
-                                        Sim: {chunk.similarity}% (dist:{" "}
-                                        {chunk.cosine_distance})
-                                      </span>
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontWeight: 600,
-                                        marginBottom: "4px",
-                                        color: "var(--audit-text-secondary)",
-                                      }}
-                                    >
-                                      {chunk.doc_name}
-                                    </div>
-                                    <div
-                                      style={{
-                                        fontSize: "11.5px",
-                                        color: "var(--audit-text-muted)",
-                                        lineHeight: 1.45,
-                                      }}
-                                    >
-                                      {chunk.excerpt}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+        {page === "system" && <><div className="jst-source-layout"><section className="jst-section"><span className="jst-eyebrow">MODEL LOKAL</span><h2 className="jst-aside-title">Koneksi & konfigurasi</h2><dl className="jst-system-ledger">{[["Model",hw?.primary_llm],["Status Ollama",!data ? "Belum tersedia" : hw?.ollama_online ? "Terhubung" : "Tidak terhubung"],["Embedding (konfigurasi)",hw?.embedding_model],["Context window",hw?.num_ctx?.toLocaleString("id-ID")],["GPU (konfigurasi)",hw?.gpu],["VRAM (konfigurasi)",hw?.vram_gb != null ? `${hw.vram_gb} GB` : undefined],["KV cache",hw?.kv_cache_type],["Flash attention",hw ? hw.flash_attention ? "Aktif" : "Nonaktif" : undefined],["Koleksi",vs?.collection],["Metrik jarak",vs?.distance_metric]].map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{value || "—"}</dd></div>)}</dl><p className="jst-note">Informasi perangkat berasal dari konfigurasi backend. Ini bukan pengukuran penggunaan GPU secara langsung.</p></section><section className="jst-section jst-training-panel"><BrainIcon size={34} weight="light" /><span className="jst-eyebrow">TRAINING MODEL</span><h2>Belum terhubung.</h2><p>Penambahan sumber saat ini memperbarui basis pengetahuan RAG. Bobot model tetap sama.</p><ul><li>Progres step & epoch <span>Belum tersedia</span></li><li>Training & validation loss <span>Belum tersedia</span></li><li>Checkpoint & adapter <span>Belum tersedia</span></li></ul><p className="jst-note">Hubungkan layanan trainer untuk menampilkan proses fine tuning yang sebenarnya.</p></section></div></>}
+        <footer className="jst-footer"><span>JST <i>/</i> Jakarta SmartTax</span><span>Sumber data dan evaluasi chatbot</span></footer>
+      </main>
     </div>
-  );
+
+  </div>;
+}
+
+function ScoreHistory({points}:{points:{id:string;value:number;label:string}[]}) {
+  if (!points.length) return <div className="jst-empty-state">Belum ada evaluasi untuk ditampilkan.</div>;
+  const width = 1000, height = 230;
+  const coords = points.map((point,index) => ({...point,x:48 + index * 904 / Math.max(1, points.length-1),y:190 - Math.max(0,Math.min(100,point.value))*1.6}));
+  return <div className="jst-history-graph"><svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Riwayat ${points.length} evaluasi, skor terakhir ${points[points.length-1].value.toFixed(1)} dari 100. Rincian ada pada tabel di bawah.`}>{[0,25,50,75,100].map(value => <g key={value}><line x1="48" x2="952" y1={190-value*1.6} y2={190-value*1.6} className={value === 75 ? "jst-chart-threshold" : "jst-chart-grid"} /><text x="14" y={195-value*1.6}>{value}</text></g>)}<polyline points={coords.map(point=>`${point.x},${point.y}`).join(" ")} className="jst-chart-line" />{coords.map(point => <g key={point.id}><title>{point.label}: {point.value.toFixed(1)}</title><circle cx={point.x} cy={point.y} r="5" /><text x={point.x} y={point.y-13} textAnchor="middle">{point.value.toFixed(1)}</text></g>)}</svg></div>;
 }

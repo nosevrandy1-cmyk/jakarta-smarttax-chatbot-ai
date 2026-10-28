@@ -36,17 +36,6 @@ STOPWORDS = {
 }
 
 CANONICAL_SYNONYMS: Dict[str, List[str]] = {
-    "60.000.000": ["60juta", "njoptkp60"],
-    "60": ["60juta"],
-    "2.000.000.000": ["2miliar", "bebas2m"],
-    "80.000.000": ["80juta", "npoptkp80"],
-    "350.000.000": ["350juta", "npoptkp350"],
-    "185.000.000.000": ["185miliar", "scbd185"],
-    "369.880.000": ["pokok369jt", "scbd369"],
-    "171.000.000": ["bphtb171jt"],
-    "102.500.000": ["bphtb102jt"],
-    "0,5": ["0.5persen", "tarifpbb05"],
-    "0.5": ["0.5persen", "tarifpbb05"],
     "jpb": ["gedung", "perkantoran", "komersial", "bangunan", "pbb"],
     "pbb": ["pbb-p2", "njop", "njoptkp", "sppt", "nop"],
     "pbjt": ["restoran", "hotel", "parkir", "hiburan", "sptpd", "makanan", "minuman"],

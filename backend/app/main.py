@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import httpx
@@ -41,9 +41,9 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_tax_db()
+    get_all_sppt_records()
+    get_all_legal_corpus()
     vector_store.reindex_all()
-    chroma_store.ensure_baseline_seeded()
     eval_engine.load_history()
     try:
         yield
@@ -95,12 +95,6 @@ class EvaluateRequestInput(BaseModel):
         default="Manual Benchmark Evaluation", min_length=3, max_length=160
     )
     use_live_llm: bool = Field(default=False)
-
-
-class SampleIngestRequestInput(BaseModel):
-    sample_type: Literal["pdf", "excel"]
-    domain: str = Field(default="JPB", min_length=2, max_length=30)
-    kontributor: str = Field(default="Auditor Bapenda DKI", min_length=2, max_length=100)
 
 
 @app.get("/api/health")
@@ -173,13 +167,23 @@ async def get_korpus_hukum_endpoint(tema_pajak: Optional[str] = None) -> Dict[st
 async def reindex_endpoint() -> Dict[str, Any]:
     init_tax_db()
     stats = vector_store.reindex_all()
-    chroma_stats = chroma_store.seed_baseline_knowledge()
+    chroma_stats = chroma_store.get_collection_telemetry()
     return {"status": "reindexed", **stats, "chromadb": chroma_stats}
 
 
 @app.get("/api/rag/telemetry")
 async def get_rag_telemetry_endpoint() -> Dict[str, Any]:
     return await eval_engine.get_dashboard_state()
+
+
+@app.get("/api/rag/chunks")
+async def get_source_chunks_endpoint(
+    source_id: Optional[str] = Query(None, max_length=100),
+    q: str = Query("", max_length=200),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+) -> Dict[str, Any]:
+    return chroma_store.get_chunk_details(source_id=source_id, query=q, offset=offset, limit=limit)
 
 
 @app.get("/api/rag/golden-dataset")
@@ -194,10 +198,13 @@ async def run_benchmark_evaluation_endpoint(
     req: Optional[EvaluateRequestInput] = None,
 ) -> Dict[str, Any]:
     payload = req or EvaluateRequestInput()
-    snapshot = await eval_engine.run_evaluation(
-        trigger_event=payload.trigger_event,
-        use_live_llm=payload.use_live_llm,
-    )
+    try:
+        snapshot = await eval_engine.run_evaluation(
+            trigger_event=payload.trigger_event,
+            use_live_llm=payload.use_live_llm,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     dashboard = await eval_engine.get_dashboard_state()
     return {
         "status": "evaluated",
@@ -240,7 +247,7 @@ async def ingest_pdf_endpoint(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     snapshot = None
-    if auto_evaluate:
+    if auto_evaluate and eval_engine.evaluation_readiness()["ready"]:
         snapshot = await eval_engine.run_evaluation(
             trigger_event=f"Ingesti PDF Regulasi: {raw_name} ({summary['domain']})",
             ingested_source_meta=summary,
@@ -286,7 +293,7 @@ async def ingest_excel_endpoint(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     snapshot = None
-    if auto_evaluate:
+    if auto_evaluate and eval_engine.evaluation_readiness()["ready"]:
         snapshot = await eval_engine.run_evaluation(
             trigger_event=f"Ingesti Tabel Pajak: {raw_name} ({summary['domain']})",
             ingested_source_meta=summary,
@@ -303,10 +310,12 @@ async def ingest_excel_endpoint(
 @app.post("/api/rag/learn-reasoning")
 async def learn_reasoning_endpoint(payload: LearnReasoningPayload) -> Dict[str, Any]:
     summary = chroma_store.ingest_user_reasoning(payload)
-    snapshot = await eval_engine.run_evaluation(
-        trigger_event=f"Injeksi Penalaran Ahli: {summary['domain']} oleh {payload.kontributor}",
-        ingested_source_meta=summary,
-    )
+    snapshot = None
+    if eval_engine.evaluation_readiness()["ready"]:
+        snapshot = await eval_engine.run_evaluation(
+            trigger_event=f"Penambahan kasus rujukan: {summary['domain']}",
+            ingested_source_meta=summary,
+        )
     dashboard = await eval_engine.get_dashboard_state()
     return {
         "status": "learned",
@@ -317,56 +326,9 @@ async def learn_reasoning_endpoint(payload: LearnReasoningPayload) -> Dict[str, 
 
 
 @app.post("/api/rag/ingest-sample")
-async def ingest_sample_endpoint(req: SampleIngestRequestInput) -> Dict[str, Any]:
-    if req.sample_type == "pdf":
-        pdf_bytes, fname = chroma_store.generate_sample_pdf_bytes(req.domain)
-        summary = chroma_store.ingest_pdf(
-            file_bytes=pdf_bytes,
-            filename=fname,
-            domain=req.domain,
-            contributor=req.kontributor,
-        )
-        trigger = f"Ingesti Sampel PDF Regulasi: {fname} ({summary['domain']})"
-    else:
-        xls_bytes, fname = chroma_store.generate_sample_excel_bytes(req.domain)
-        summary = chroma_store.ingest_excel(
-            file_bytes=xls_bytes,
-            filename=fname,
-            category=req.domain,
-            contributor=req.kontributor,
-        )
-        trigger = f"Ingesti Sampel Tabel Excel: {fname} ({summary['domain']})"
-
-    snapshot = await eval_engine.run_evaluation(
-        trigger_event=trigger,
-        ingested_source_meta=summary,
-    )
-    dashboard = await eval_engine.get_dashboard_state()
-    return {
-        "status": "ingested",
-        "ingestion": summary,
-        "snapshot": snapshot,
-        "dashboard": dashboard,
-    }
-
-
 @app.post("/api/rag/reset-baseline")
-async def reset_baseline_endpoint() -> Dict[str, Any]:
-    chroma_store.client.delete_collection(chroma_store.collection_name)
-    chroma_store.collection = chroma_store.client.get_or_create_collection(
-        name=chroma_store.collection_name,
-        metadata={"hnsw:space": "cosine"},
-    )
-    chroma_store.ensure_baseline_seeded()
-    for hist_path in [eval_engine.history_path, eval_engine.mirror_history_path]:
-        if hist_path.exists():
-            hist_path.unlink()
-    eval_engine.load_history()
-    dashboard = await eval_engine.get_dashboard_state()
-    return {
-        "status": "reset",
-        "dashboard": dashboard,
-    }
+async def demo_data_disabled_endpoint() -> Dict[str, Any]:
+    raise HTTPException(status_code=410, detail="Data contoh dinonaktifkan. Gunakan sumber data resmi.")
 
 
 @app.post("/api/chat")

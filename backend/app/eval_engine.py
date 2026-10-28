@@ -144,125 +144,47 @@ class SmartTaxEvaluationEngine:
 
     def load_golden_dataset(self) -> List[Dict[str, Any]]:
         if not self.golden_path.exists():
-            fallback = Path(__file__).resolve().parent.parent / "golden_dataset.json"
-            if fallback.exists():
-                return json.loads(fallback.read_text(encoding="utf-8"))
             return []
-        return json.loads(self.golden_path.read_text(encoding="utf-8"))
+        data = json.loads(self.golden_path.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            raise ValueError("Dataset uji harus berupa daftar soal dan jawaban acuan.")
+        return data
 
     def load_history(self) -> List[Dict[str, Any]]:
-        for path in (self.history_path, self.mirror_history_path):
-            if path.exists():
-                try:
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                    if isinstance(data, list) and len(data) > 0:
-                        return data
-                except Exception:
-                    pass
-        return self._initialize_baseline_history()
+        # An empty history is authoritative. Reading the dashboard never creates
+        # baseline scores or restores a legacy demo snapshot from the mirror.
+        if not self.history_path.exists():
+            return []
+        history = json.loads(self.history_path.read_text(encoding="utf-8"))
+        if not isinstance(history, list):
+            raise ValueError("Format riwayat evaluasi tidak valid.")
+        return history
+
+    def evaluation_readiness(self) -> Dict[str, Any]:
+        sources = self._source_count()
+        questions = len(self.load_golden_dataset())
+        if not sources:
+            reason = "Belum ada sumber data resmi. Unggah sumber sebelum menjalankan evaluasi."
+        elif not questions:
+            reason = "Dataset uji resmi belum tersedia. Siapkan soal dan jawaban acuan sebelum evaluasi."
+        else:
+            reason = "Sumber dan dataset uji tersedia. Evaluasi siap dijalankan."
+        return {"ready": sources > 0 and questions > 0, "source_chunks": sources,
+                "golden_items": questions, "reason": reason}
+
+    def _source_count(self) -> int:
+        return int(chroma_store.collection.count())
+
+    def _require_evaluation_data(self) -> None:
+        readiness = self.evaluation_readiness()
+        if not readiness["ready"]:
+            raise ValueError(readiness["reason"])
 
     def _save_history(self, history: List[Dict[str, Any]]) -> None:
         payload = json.dumps(history, ensure_ascii=False, indent=2)
         self.history_path.write_text(payload, encoding="utf-8")
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.mirror_history_path.write_text(payload, encoding="utf-8")
-
-    def _build_initial_pre_calibration_snapshot(
-        self, golden_items: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        pre_items: List[Dict[str, Any]] = []
-        for item in golden_items:
-            qid = item["id"]
-            dom = item["domain"]
-            req_kws = item.get("kata_kunci_wajib", [])
-            partial_ans = (
-                f"Ketentuan pajak daerah DKI Jakarta untuk kategori {dom} mengacu pada Peraturan Daerah "
-                f"Pajak Daerah Provinsi DKI Jakarta. Rincian nominal khusus dan simulasi perhitungan "
-                f"memerlukan sinkronisasi korpus regulasi dan tabel ketetapan lokal."
-            )
-            cos_sim = embedder.cosine_similarity(partial_ans, item["kunci_jawaban"])
-            kw_ratio, matched, missing = _compute_keyword_hits(partial_ans, req_kws)
-            item_score = round(((0.60 * cos_sim) + (0.40 * kw_ratio)) * 100.0, 2)
-            pre_items.append(
-                {
-                    "id": qid,
-                    "domain": dom,
-                    "tema_pajak": item.get("tema_pajak", dom),
-                    "kategori": item.get("kategori", dom),
-                    "pertanyaan": item["pertanyaan"],
-                    "kunci_jawaban": item["kunci_jawaban"],
-                    "referensi_regulasi": item.get("referensi_regulasi", ""),
-                    "previous_answer": partial_ans,
-                    "previous_score": item_score,
-                    "current_answer": partial_ans,
-                    "current_score": item_score,
-                    "score_delta": 0.0,
-                    "cosine_similarity_pct": round(cos_sim * 100.0, 2),
-                    "keyword_hit_ratio_pct": round(kw_ratio * 100.0, 2),
-                    "faithfulness_pct": 54.2,
-                    "retrieval_precision_pct": 51.8,
-                    "matched_keywords": matched,
-                    "missing_keywords": missing,
-                    "status": _classify_status(item_score),
-                    "retrieved_sources": [],
-                    "ingested_source_meta": {
-                        "doc_name": "Baseline Pra-Kalibrasi",
-                        "source_type": "pdf_regulasi",
-                        "contributor": "Sistem Awal",
-                        "domain": dom,
-                    },
-                }
-            )
-
-        mean_golden = round(
-            sum(x["current_score"] for x in pre_items) / max(1, len(pre_items)), 2
-        )
-        faithfulness = 54.2
-        precision = 51.8
-        coverage = 33.33
-        iq = round(
-            (0.40 * mean_golden)
-            + (0.25 * faithfulness)
-            + (0.20 * precision)
-            + (0.15 * coverage),
-            2,
-        )
-        return {
-            "snapshot_id": "snap-baseline-000",
-            "timestamp": "2026-10-26T09:00:00+00:00",
-            "trigger_event": "Pra-Ingesti Korpus Lokal (Baseline Uncalibrated)",
-            "smarttax_iq_percentage": iq,
-            "delta_change": 0.0,
-            "golden_eval_accuracy": mean_golden,
-            "faithfulness_score": faithfulness,
-            "retrieval_precision": precision,
-            "domain_coverage": coverage,
-            "total_chunks_indexed": 8,
-            "ingested_source_meta": {
-                "doc_name": "Baseline Pra-Kalibrasi",
-                "source_type": "pdf_regulasi",
-                "contributor": "System Init",
-                "domain": "PBB-P2",
-            },
-            "items": pre_items,
-        }
-
-    def _initialize_baseline_history(self) -> List[Dict[str, Any]]:
-        chroma_store.ensure_baseline_seeded()
-        golden_items = self.load_golden_dataset()
-        pre_snap = self._build_initial_pre_calibration_snapshot(golden_items)
-        initial_history = [pre_snap]
-        self._save_history(initial_history)
-        current_snap = self.run_evaluation_sync(
-            trigger_event="Kalibrasi Awal Korpus Lokal Bapenda (ChromaDB Seed)",
-            ingested_source_meta={
-                "doc_name": "Korpus Perda & Tabel Ketetapan DKI 2026",
-                "source_type": "pdf_regulasi",
-                "contributor": "Tim AI Jakarta SmartTax",
-                "domain": "SEMUA DOMAIN",
-            },
-        )
-        return [pre_snap, current_snap]
 
     def _evaluate_items(
         self,
@@ -271,7 +193,7 @@ class SmartTaxEvaluationEngine:
         ingested_source_meta: Optional[Dict[str, Any]] = None,
         live_answers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        chroma_store.ensure_baseline_seeded()
+        self._require_evaluation_data()
         telemetry = chroma_store.get_collection_telemetry()
         golden_items = self.load_golden_dataset()
 
@@ -436,14 +358,8 @@ class SmartTaxEvaluationEngine:
         trigger_event: str = "Manual Benchmark Evaluation",
         ingested_source_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        history = []
-        for path in (self.history_path, self.mirror_history_path):
-            if path.exists():
-                try:
-                    history = json.loads(path.read_text(encoding="utf-8"))
-                    break
-                except Exception:
-                    pass
+        self._require_evaluation_data()
+        history = self.load_history()
         prev_snap = history[-1] if history else None
         snapshot = self._evaluate_items(
             previous_snapshot=prev_snap,
@@ -460,6 +376,7 @@ class SmartTaxEvaluationEngine:
         ingested_source_meta: Optional[Dict[str, Any]] = None,
         use_live_llm: bool = False,
     ) -> Dict[str, Any]:
+        self._require_evaluation_data()
         history = self.load_history()
         prev_snap = history[-1] if history else None
         live_answers: Dict[str, str] = {}
@@ -488,7 +405,7 @@ class SmartTaxEvaluationEngine:
 
     async def get_dashboard_state(self) -> Dict[str, Any]:
         history = self.load_history()
-        latest = history[-1]
+        latest = history[-1] if history else None
         telemetry = chroma_store.get_collection_telemetry()
 
         ollama_online = False
@@ -512,6 +429,7 @@ class SmartTaxEvaluationEngine:
             },
             "vector_store": telemetry,
             "latest_snapshot": latest,
+            "evaluation_readiness": self.evaluation_readiness(),
             "history_timeline": [
                 {
                     "snapshot_id": h["snapshot_id"],
