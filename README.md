@@ -129,19 +129,39 @@ Jalankan frontend dari folder `frontend` dengan `npm run dev`.
 
 ### 1. Menjalankan Backend (Port `8000`)
 
+Setup pertama setelah clone: buat `.env` hanya jika belum tersedia, lalu
+sesuaikan konfigurasi lokal. Jangan salin ulang contoh saat menjalankan aplikasi
+di komputer yang sama karena konfigurasi yang sudah disimpan dapat tertimpa.
+
 ```bash
 cd backend
-cp .env.example .env
-uv sync
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+if [ ! -f .env ]; then cp .env.example .env; fi
+uv sync --locked
 ```
+
+Untuk menjalankan kembali backend yang sudah disiapkan:
+
+```bash
+cd backend
+uv run --locked uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Pengguna Windows dapat mengikuti [panduan setup backend Windows](docs/WINDOWS_BACKEND_SETUP.md).
 
 ### 2. Menjalankan Frontend (Port `3000`)
 
+Setup pertama setelah clone: buat `.env.local` hanya jika belum ada.
+
 ```bash
 cd frontend
-cp .env.example .env.local
+if [ ! -f .env.local ]; then cp .env.example .env.local; fi
 npm install
+```
+
+Untuk menjalankan kembali frontend yang sudah disiapkan:
+
+```bash
+cd frontend
 npm run dev
 ```
 

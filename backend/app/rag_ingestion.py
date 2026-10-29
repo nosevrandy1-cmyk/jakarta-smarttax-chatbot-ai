@@ -134,12 +134,12 @@ class SmartTaxChromaStore:
             tmp_path = Path(tmp.name)
 
         try:
-            md_text = pymupdf4llm.to_markdown(str(tmp_path))
-            if not md_text or not md_text.strip():
-                doc = pymupdf.open(str(tmp_path))
-                pages = [page.get_text("text") for page in doc]
-                doc.close()
-                md_text = "\n\n".join(pages)
+            # Own the document handle so Windows can remove the temporary file
+            # after extraction, including when the Markdown converter raises.
+            with pymupdf.open(str(tmp_path)) as doc:
+                md_text = pymupdf4llm.to_markdown(doc)
+                if not md_text or not md_text.strip():
+                    md_text = "\n\n".join(page.get_text("text") for page in doc)
         finally:
             tmp_path.unlink(missing_ok=True)
 

@@ -3,7 +3,7 @@ name = "jakarta-smarttax-chatbot-ai-backend"
 version = "1.0.0"
 description = "Jakarta SmartTax Chatbot AI Backend — FastAPI, SQLite, Qdrant Vector DB, and Multi-Node Ollama (Gemma 2 & DeepSeek)"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
@@ -11,13 +11,17 @@ dependencies = [
     "ollama>=0.4.7",
     "qdrant-client>=1.12.0",
     "chromadb>=0.5.0",
-    "pymupdf>=1.24.0",
-    "pymupdf4llm>=0.0.17,<1.0.0",
+    "pymupdf==1.26.6; sys_platform == 'win32'",
+    "pymupdf>=1.24.0; sys_platform != 'win32'",
+    "pymupdf4llm==0.0.27; sys_platform == 'win32'",
+    "pymupdf4llm>=0.0.17,<1.0.0; sys_platform != 'win32'",
     "langchain-text-splitters>=0.3.0",
-    "pandas>=2.2.0",
+    "pandas==2.3.3; sys_platform == 'win32'",
+    "pandas>=2.2.0; sys_platform != 'win32'",
     "openpyxl>=3.1.0",
     "transformers>=4.44.0",
-    "numpy>=1.26.0",
+    "numpy==2.2.6; sys_platform == 'win32'",
+    "numpy>=1.26.0; sys_platform != 'win32'",
     "python-multipart>=0.0.9",
     "python-dotenv>=1.0.0",
     "pydantic>=2.9.0",
