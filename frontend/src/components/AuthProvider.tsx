@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { usePathname } from 'next/navigation';
 import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
 import { ArrowLeftIcon } from '@phosphor-icons/react/dist/csr/ArrowLeft';
-import { API_BASE, apiFetch, setCsrfToken } from '@/lib/api';
+import { API_BASE, apiFetch, setCsrfToken, flushChatHistory } from '@/lib/api';
 
 type User = { id: string; email: string; name: string; role: 'user' | 'developer' };
 type Session = { configured: boolean; user: User | null; csrf_token: string | null };
@@ -111,6 +111,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [clearSession, refresh]);
 
   async function logout() {
+    await flushChatHistory();
     const response = await apiFetch('/api/auth/logout', { method: 'POST' });
     if (!response.ok && response.status !== 401) throw new Error('Belum bisa keluar. Coba lagi.');
     clearSession(true);
@@ -151,7 +152,7 @@ export function AccountMenu() {
       try { await logout(); } catch { setError('Belum bisa keluar. Coba lagi.'); setBusy(false); }
     }}><SignOutIcon size={18} aria-hidden="true" /></button>
     {user.role === 'developer' && <a className="auth-dashboard-link" href="/admin">Buka dashboard developer</a>}
-    <small>Riwayat di perangkat ini dibersihkan saat keluar. Sinkronisasi akun belum tersedia.</small>
+    <small>Riwayat tersimpan di akun dan tetap tersedia setelah keluar.</small>
     {error && <small role="alert">{error}</small>}
   </div>;
 }

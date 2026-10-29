@@ -68,19 +68,17 @@ Frontend dapat tetap memakai proses development yang sudah berjalan. Refresh bro
 2. Akun baru: klik **Daftar**, kemudian **Daftar dengan Google**. Akun yang sudah terdaftar memakai **Masuk dengan Google**. Selesaikan langkah Google sendiri. Login akun yang belum terdaftar ditolak; daftar ulang akun lama juga ditolak.
 3. Login akun biasa: chatbot terbuka. Mengakses `/admin` atau `/audit` menampilkan akses khusus developer dan API pengelolaan menolak request.
 4. Login akun dalam `AUTH_DEVELOPER_EMAILS`: chatbot dan dashboard dapat dibuka. Tautan dashboard muncul pada area akun.
-5. Uji refresh; sesi tetap berlaku selama belum kedaluwarsa. Tombol **Keluar akun** mencabut sesi server dan membersihkan riwayat akun pada perangkat ini. Tab lain pada browser yang sama menerima pemberitahuan logout.
+5. Uji refresh; sesi tetap berlaku selama belum kedaluwarsa. Tombol **Keluar akun** mencabut sesi server dan mempertahankan history server pada akun yang sama. Tab lain pada browser yang sama menerima pemberitahuan logout.
 6. Bila memakai allowlist, uji akun yang tidak diizinkan; tidak boleh tercipta sesi aplikasi.
 7. Uji pembatalan Google dan callback yang diulang; aplikasi menampilkan alasan singkat dan dapat memulai login baru.
 
 Pesan `redirect_uri_mismatch` berarti callback di Google Cloud tidak sama persis dengan `GOOGLE_REDIRECT_URI`, termasuk scheme, host, port dan path. Kesalahan cookie/sesi juga sering disebabkan pencampuran localhost dengan 127.0.0.1.
 
-## Riwayat pada tahap ini
+## Riwayat chat per akun
 
-Riwayat browser dipisahkan berdasarkan user ID internal, bukan email. Riwayat anonymous/legacy yang sudah ada tidak otomatis diimpor ke akun Google. Ini mencegah isi browser bersama langsung dikaitkan dengan orang pertama yang login.
+History kini disimpan di database akun server, dipisahkan berdasarkan user ID JST, dan tetap ada setelah logout. Rename/hapus ikut disimpan. LocalStorage lama tidak diimpor otomatis. Tunggu indikator Riwayat tersimpan di akun sebelum keluar atau menutup browser. Kontribusi history untuk training belum diaktifkan.
 
-Riwayat akun tersimpan di browser yang sama dan bertahan setelah refresh, tetapi dibersihkan saat logout. Belum ada database percakapan server, sinkronisasi lintas perangkat, ekspor atau penghapusan akun. Penyimpanan browser tidak memberikan isolasi terhadap orang yang menguasai profil browser/perangkat yang sama. Jangan menyebut implementasi ini sebagai history server per user.
-
-Sesi kedaluwarsa menghentikan akses chat dan membatalkan stream pada UI yang ditutup. Draf dalam komponen chat belum dijamin pulih setelah login ulang. Fitur kontribusi percakapan untuk training tetap belum diimplementasikan dan tidak diaktifkan oleh login.
+Lihat [cara tes dua akun dan batas penyimpanan](CHAT_HISTORY_2026-10-29.md).
 
 ## Sebelum online
 

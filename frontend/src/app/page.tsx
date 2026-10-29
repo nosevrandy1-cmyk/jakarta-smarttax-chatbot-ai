@@ -1,7 +1,8 @@
 "use client";
 
-import { AccountMenu, useAuth } from "@/components/AuthProvider";
+import { AccountMenu } from "@/components/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { useServerHistory } from "@/lib/useServerHistory";
 
 import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
@@ -350,8 +351,8 @@ function FormattedMarkdown({
 }
 
 export default function TaxAssistantView() {
-  const { user } = useAuth();
-  const storageKey = `jakarta_smarttax_sessions_v3_user_${user.id}`;
+
+
   const [appearance, setAppearance] = useState<"dark" | "light">("dark");
   useEffect(() => {
     try {
@@ -394,19 +395,9 @@ export default function TaxAssistantView() {
   const [cmdQuery, setCmdQuery] = useState<string>("");
 
   const [renamingChat, setRenamingChat] = useState<{ id: string; title: string } | null>(null);
-  const [sessions, setSessions] = useState<ChatSession[]>([
-    {
-      id: "default-session",
-      title: "Percakapan Baru",
-      theme: "PBB-P2",
-      updatedAt: Date.now(),
-      messages: [],
-    },
+  const { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush } = useServerHistory<ChatSession>([
+    { id: 'default-session', title: 'Percakapan Baru', theme: 'PBB-P2', updatedAt: Date.now(), messages: [] },
   ]);
-  const [activeSessionId, setActiveSessionId] =
-    useState<string>("default-session");
-  const [hydrated, setHydrated] = useState<boolean>(false);
-
   const [input, setInput] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string>("");
@@ -449,36 +440,7 @@ export default function TaxAssistantView() {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
     }
-    try {
-      // Shared anonymous/legacy storage is never automatically assigned to a Google account.
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          setSessions(parsed.sessions);
-          if (parsed.activeSessionId) {
-            setActiveSessionId(parsed.activeSessionId);
-          }
-        }
-      }
-    } catch {
-      // Ignore storage access errors
-    } finally {
-      setHydrated(true);
-    }
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({ sessions, activeSessionId })
-      );
-    } catch {
-      // Ignore quota errors
-    }
-  }, [sessions, activeSessionId, hydrated, storageKey]);
+  }, []);
 
   useEffect(() => {
     if (!userScrolledUpRef.current) {
@@ -915,8 +877,15 @@ export default function TaxAssistantView() {
 
   const isChatEmpty = activeSession.messages.length === 0;
 
+  if (!hydrated) return <main className="auth-screen"><section className="auth-card">
+    <h1>{loadError ? 'Riwayat belum dapat dimuat' : 'Memuat percakapan…'}</h1>
+    {loadError && <><p>Periksa koneksi lalu muat ulang. Riwayat di server tidak akan ditimpa.</p><button className="auth-google-button" onClick={() => window.location.reload()}>Muat ulang</button></>}
+  </section></main>;
+
+
   return (
     <div className="app-layout" data-chat-theme={appearance}>
+<div className="history-sync-status" role="status">{syncStatus}<button type="button" onClick={() => { void flush().catch(() => {}); }}>Simpan</button></div>
       {renamingChat && <RenameChatDialog key={renamingChat.id} title={renamingChat.title}
         onCancel={() => setRenamingChat(null)} onSave={name => {
           setSessions(previous => previous.map(session => session.id === renamingChat.id

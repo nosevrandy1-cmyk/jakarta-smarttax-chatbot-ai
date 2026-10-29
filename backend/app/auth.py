@@ -335,7 +335,7 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
     app.add_middleware(LimitedBodyMiddleware)
     router = APIRouter(prefix='/api/auth')
     public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/register','GET'),('/api/auth/google/callback','GET')}
-    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET')}
+    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT')}
 
     @app.middleware('http')
     async def authenticate(request: Request, call_next):

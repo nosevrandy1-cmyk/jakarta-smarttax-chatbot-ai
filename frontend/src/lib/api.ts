@@ -13,3 +13,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   }
   return response;
 }
+
+let historyFlusher: (() => Promise<void>) | null = null;
+export function setHistoryFlusher(flusher: (() => Promise<void>) | null) { historyFlusher = flusher; }
+export async function flushChatHistory() { await historyFlusher?.(); }

@@ -9,3 +9,5 @@
 .auth-dashboard-link{flex-basis:100%;font-size:11px;color:var(--text-secondary);text-underline-offset:3px}.auth-dashboard-link:focus-visible{outline:2px solid var(--chat-accent);outline-offset:3px}
 
 .auth-card .auth-switch{text-align:center;font-size:12px}.auth-switch button{background:none;border:0;color:inherit;font:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:4px}.auth-switch button:focus-visible{outline:2px solid #93c5fd;outline-offset:3px;border-radius:3px}
+
+.history-sync-status{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:20;font-size:11px;color:var(--text-secondary);display:flex;gap:8px;align-items:center;max-width:70vw;background:var(--bg-main);padding:5px 10px;border-radius:8px}.history-sync-status button{font:inherit;color:inherit;background:transparent;border:1px solid var(--border-hover);border-radius:5px;padding:3px 6px;cursor:pointer}

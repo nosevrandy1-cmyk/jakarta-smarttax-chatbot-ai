@@ -36,6 +36,7 @@ from .tax_db import (
 from .vector_store import vector_store
 
 from .auth import install_auth
+from .chat_history import install_history
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -60,13 +61,14 @@ app = FastAPI(
 )
 
 install_auth_settings, _auth_store = install_auth(app)
+install_history(app, _auth_store)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[install_auth_settings.public_url],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-JST-Account-ID"],
 )
 
 
