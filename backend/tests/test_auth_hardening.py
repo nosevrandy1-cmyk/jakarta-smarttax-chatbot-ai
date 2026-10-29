@@ -13,12 +13,13 @@ from fastapi import FastAPI
 
 
 class AuthHardeningTests(unittest.TestCase):
+    seed_session = fixtures.GoogleAuthTests.seed_session
     setUp = fixtures.GoogleAuthTests.setUp
     tearDown = fixtures.GoogleAuthTests.tearDown
     run_async = fixtures.GoogleAuthTests.run_async
 
     def test_third_party_email_cannot_gain_developer_role(self):
-        token=self.store.create_session({**self.claims,'email':'developer@example.test'})
+        token=self.seed_session({**self.claims,'email':'developer@example.test'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             self.assertEqual((await client.get('/api/auth/session')).json()['user']['role'],'user')
@@ -31,16 +32,16 @@ class AuthHardeningTests(unittest.TestCase):
         self.assertEqual(validate_identity({**self.claims,'hd':'example.test'},'test-nonce',settings)['sub'],'stable-subject')
 
     def test_changed_email_revokes_all_old_sessions(self):
-        one=self.store.create_session(self.claims)
-        two=self.store.create_session(self.claims)
-        changed=self.store.create_session({**self.claims,'email':'changed@example.test'})
+        one=self.seed_session(self.claims)
+        two=self.seed_session(self.claims)
+        changed=self.seed_session({**self.claims,'email':'changed@example.test'})
         self.assertIsNone(self.store.session(one))
         self.assertIsNone(self.store.session(two))
         self.assertIsNotNone(self.store.session(changed))
 
     def test_account_rate_limit_isolated_and_expires(self):
-        one=self.store.create_session(self.claims)
-        two=self.store.create_session({**self.claims,'sub':'second-user'})
+        one=self.seed_session(self.claims)
+        two=self.seed_session({**self.claims,'sub':'second-user'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,one)
             csrf=(await client.get('/api/auth/session')).json()['csrf_token']
@@ -66,7 +67,7 @@ class AuthHardeningTests(unittest.TestCase):
         self.run_async(check)
 
     def test_oversized_json_and_chunked_bodies_are_rejected(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         async def chunks():
             yield b'x'*600000
             yield b'y'*600000
@@ -79,7 +80,7 @@ class AuthHardeningTests(unittest.TestCase):
         self.run_async(check)
 
     def test_upload_envelope_is_bounded(self):
-        token=self.store.create_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
+        token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             csrf=(await client.get('/api/auth/session')).json()['csrf_token']
@@ -112,10 +113,10 @@ class AuthHardeningTests(unittest.TestCase):
             row=db.execute("SELECT * FROM auth_users WHERE id='keep-id'").fetchone()
             self.assertEqual(row['subject'],'old-sub')
             self.assertEqual(row['google_authoritative'],0)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],2)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
 
     def test_allowlist_revocation_and_developer_removal_apply_to_existing_sessions(self):
-        token=self.store.create_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
+        token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
         settings=replace(self.settings,developer_emails=frozenset(),allowed_emails=frozenset({'another@example.test'}))
         app=FastAPI();install_auth(app,settings,self.store)
         async def check():
@@ -126,7 +127,7 @@ class AuthHardeningTests(unittest.TestCase):
         asyncio.run(check())
 
     def test_raw_chroma_routes_are_not_exposed_by_application(self):
-        token=self.store.create_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
+        token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             self.assertEqual((await client.get('/api/v2/tenants/default_tenant/databases/default_database/collections')).status_code,404)
@@ -134,7 +135,7 @@ class AuthHardeningTests(unittest.TestCase):
 
 
     def test_forbidden_responses_cannot_be_cached(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         async def check(client):
             self.assertEqual((await client.get('/api/rag/telemetry')).headers['cache-control'],'no-store')
             client.cookies.set(SESSION_COOKIE,token)
@@ -142,7 +143,7 @@ class AuthHardeningTests(unittest.TestCase):
         self.run_async(check)
 
     def test_logout_still_works_after_general_api_rate_limit_is_reached(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         session=self.store.session(token)
         for _ in range(120): self.store.rate_limit('api:'+session['id'],120)
         async def check(client):

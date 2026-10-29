@@ -117,7 +117,7 @@ class AuthStore:
 
     def initialize(self):
         with self.connect() as db:
-            if db.execute('PRAGMA user_version').fetchone()[0] > 2:
+            if db.execute('PRAGMA user_version').fetchone()[0] > 3:
                 raise RuntimeError('Unsupported account database version')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS auth_users (
@@ -139,7 +139,11 @@ class AuthStore:
             if 'google_authoritative' not in columns:
                 db.execute('ALTER TABLE auth_users ADD COLUMN google_authoritative INTEGER NOT NULL DEFAULT 0')
                 db.execute("UPDATE auth_users SET google_authoritative=1 WHERE lower(email) LIKE '%@gmail.com'")
-            db.execute('PRAGMA user_version = 2')
+            flow_columns = {row['name'] for row in db.execute('PRAGMA table_info(auth_flows)')}
+            if 'intent' not in flow_columns:
+                # Old in-flight OAuth requests may only log into existing accounts.
+                db.execute("ALTER TABLE auth_flows ADD COLUMN intent TEXT NOT NULL DEFAULT 'login'")
+            db.execute('PRAGMA user_version = 3')
 
     def rate_limit(self, actor: str, limit: int, window: int = 60):
         now = int(time.time())
@@ -153,7 +157,9 @@ class AuthStore:
             db.execute('INSERT INTO auth_rate_limits VALUES (?,?,?) ON CONFLICT(actor_hash) DO UPDATE SET hits=hits+1', (key,1,now+window))
         return True
 
-    def create_flow(self):
+    def create_flow(self, intent: str = 'login'):
+        if intent not in {'login', 'register'}:
+            raise ValueError('Unsupported authentication intent')
         state, browser, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(4))
         now = int(time.time())
         with self.connect() as db:
@@ -162,7 +168,7 @@ class AuthStore:
             db.execute('DELETE FROM auth_sessions WHERE expires_at <= ? OR last_seen <= ?', (now, now-IDLE_TTL))
             if db.execute('SELECT COUNT(*) FROM auth_flows').fetchone()[0] >= 100:
                 raise LoginCapacityError()
-            db.execute('INSERT INTO auth_flows VALUES (?,?,?,?,?)', (digest(state), digest(browser), nonce, verifier, now+FLOW_TTL))
+            db.execute('INSERT INTO auth_flows (state_hash,browser_hash,nonce,verifier,expires_at,intent) VALUES (?,?,?,?,?,?)', (digest(state), digest(browser), nonce, verifier, now+FLOW_TTL, intent))
         return state, browser, nonce, verifier
 
     def consume_flow(self, state: str, browser: str):
@@ -174,12 +180,18 @@ class AuthStore:
             db.execute('DELETE FROM auth_flows WHERE state_hash=?', (digest(state),))
             return dict(row) if row['expires_at'] > time.time() else None
 
-    def create_session(self, claims, previous: str = ''):
+    def create_session(self, claims, previous: str = '', *, intent: str = 'login'):
+        if intent not in {'login', 'register'}:
+            raise ValueError('Unsupported authentication intent')
         now = int(time.time())
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             existing = db.execute("SELECT id,email,google_authoritative FROM auth_users WHERE provider='google' AND subject=?", (claims['sub'],)).fetchone()
+            if intent == 'login' and existing is None:
+                raise GoogleLoginError('not_registered')
+            if intent == 'register' and existing is not None:
+                raise GoogleLoginError('already_registered')
             authoritative = int(google_authoritative(claims))
             if existing and (existing['email'] != claims['email'].casefold() or existing['google_authoritative'] != authoritative):
                 db.execute('DELETE FROM auth_sessions WHERE user_id=?', (existing['id'],))
@@ -322,7 +334,7 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
     store.initialize()
     app.add_middleware(LimitedBodyMiddleware)
     router = APIRouter(prefix='/api/auth')
-    public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/callback','GET')}
+    public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/register','GET'),('/api/auth/google/callback','GET')}
     chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET')}
 
     @app.middleware('http')
@@ -385,24 +397,31 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
         response.delete_cookie(settings.flow_cookie, path='/', secure=settings.secure, httponly=True, samesite='lax')
         return response
 
-    @router.get('/google/login')
-    async def login(request: Request):
+    async def start_google(request: Request, intent: str):
         peer = request.client.host if request.client else 'unknown'
         if not store.rate_limit('login:' + peer,20):
             return auth_json({'detail':'Terlalu banyak percobaan login. Coba lagi sebentar.'},status_code=429,headers={'Retry-After':'60','Cache-Control':'no-store'})
         if not settings.ready:
             return auth_json({'detail':'Login Google belum dikonfigurasi.'},status_code=503)
         try:
-            state, browser, nonce, verifier = store.create_flow()
+            state, browser, nonce, verifier = store.create_flow(intent)
         except LoginCapacityError:
             return auth_json({'detail':'Terlalu banyak proses login. Coba lagi sebentar.'},status_code=429,headers={'Retry-After':'60'})
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
         query = urlencode({'client_id':settings.client_id, 'redirect_uri':settings.redirect_uri,
             'response_type':'code','scope':'openid email profile','state':state,'nonce':nonce,
-            'code_challenge':challenge,'code_challenge_method':'S256','prompt':'select_account'})
+            'code_challenge':challenge,'code_challenge_method':'S256','prompt':'select_account consent' if intent == 'register' else 'select_account'})
         response = RedirectResponse('https://accounts.google.com/o/oauth2/v2/auth?' + query, status_code=302)
         set_cookie(response,settings.flow_cookie,browser,FLOW_TTL)
         return response
+
+    @router.get('/google/login')
+    async def login(request: Request):
+        return await start_google(request, 'login')
+
+    @router.get('/google/register')
+    async def register(request: Request):
+        return await start_google(request, 'register')
 
     @router.get('/google/callback')
     async def callback(request: Request):
@@ -420,7 +439,7 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
             return failure('failed')
         try:
             claims = await google_identity(code,flow['verifier'],flow['nonce'],settings)
-            token = store.create_session(claims,request.cookies.get(settings.session_cookie,''))
+            token = store.create_session(claims,request.cookies.get(settings.session_cookie,''), intent=flow['intent'])
         except PermissionError:
             return failure('not_allowed')
         except GoogleLoginError as error:

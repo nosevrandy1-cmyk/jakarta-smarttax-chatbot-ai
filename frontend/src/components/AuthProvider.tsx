@@ -23,6 +23,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [providerError, setProviderError] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const userRef = useRef<User | null>(null);
   const requestVersion = useRef(0);
 
@@ -65,6 +66,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     const reason = query.get('auth_error');
     if (reason) {
       const messages: Record<string, string> = {
+        not_registered: 'Akun ini belum terdaftar. Silakan daftar terlebih dahulu.',
+        already_registered: 'Akun ini sudah terdaftar. Silakan masuk.',
         cancelled: 'Login dibatalkan. Kamu bisa mencoba lagi.',
         not_allowed: 'Akun ini belum mendapat akses. Hubungi pengelola JST.',
         invalid_state: 'Proses login sudah kedaluwarsa. Silakan mulai lagi.',
@@ -86,6 +89,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         google_unreachable: 'Server belum dapat terhubung ke Google. Coba lagi sebentar.',
 
       };
+      if (reason === 'not_registered') setAuthMode('register');
+      if (reason === 'already_registered') setAuthMode('login');
       setProviderError(messages[reason] || 'Login belum berhasil. Silakan coba lagi.');
       query.delete('auth_error');
       const remaining = query.toString();
@@ -115,13 +120,14 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   if (loading) return <main className="auth-screen"><p role="status">Memeriksa sesi…</p></main>;
   if (!session?.user) return <main className="auth-screen"><section className="auth-card">
     <span className="auth-brand">JST <span>Jakarta SmartTax</span></span>
-    <h1>Masuk ke Jakarta SmartTax</h1>
-    <p>Gunakan akun Google untuk mulai bertanya berdasarkan dokumen yang tersedia.</p>
+    <h1>{authMode === 'register' ? 'Daftar Jakarta SmartTax' : 'Masuk ke Jakarta SmartTax'}</h1>
+    <p>{authMode === 'register' ? 'Daftarkan akun Google untuk mulai menggunakan chatbot JST. Tidak perlu membuat password baru.' : 'Masuk menggunakan akun Google yang sudah terdaftar di JST.'}</p>
     {(error || providerError) && <p className="auth-feedback" role="alert">{error || providerError}</p>}
     {session && !session.configured && <p className="auth-feedback" role="status">Login Google belum tersedia. Hubungi pengelola JST untuk menyiapkannya.</p>}
-    {session?.configured ? <a className="auth-google-button" href={API_BASE + '/api/auth/google/login'}>Masuk dengan Google</a>
+    {session?.configured ? <a className="auth-google-button" href={API_BASE + '/api/auth/google/' + authMode}>{authMode === 'register' ? 'Daftar dengan Google' : 'Masuk dengan Google'}</a>
       : <button className="auth-google-button" onClick={() => { setLoading(true); void refresh(); }}>Periksa kembali</button>}
-    <p className="auth-privacy">Google digunakan untuk memverifikasi identitas akun. Pertanyaan dan dokumenmu tidak dikirim ke Google untuk login.</p>
+    <p className="auth-switch">{authMode === 'register' ? 'Sudah punya akun? ' : 'Belum punya akun? '}<button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setProviderError(''); }}>{authMode === 'register' ? 'Masuk' : 'Daftar'}</button></p>
+    <p className="auth-privacy">{authMode === 'register' ? 'JST akan menerima nama, email, dan ID akun Google untuk membuat akun. Pertanyaan dan dokumenmu tidak dikirim ke Google untuk pendaftaran.' : 'Google digunakan untuk memverifikasi identitas akun. Pertanyaan dan dokumenmu tidak dikirim ke Google untuk login.'}</p>
   </section></main>;
 
   const restricted = ['/admin','/audit'].some(route => pathname === route || pathname.startsWith(route + '/'));

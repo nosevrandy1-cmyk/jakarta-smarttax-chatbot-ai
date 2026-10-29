@@ -34,6 +34,11 @@ class GoogleAuthTests(unittest.TestCase):
         async def evaluate(): return {'ok':True}
         self.claims={'sub':'stable-subject','email':'user@example.test','name':'Test User','email_verified':True,'nonce':'test-nonce'}
 
+    def seed_session(self, claims, previous=''):
+        with self.store.connect() as db:
+            exists = db.execute("SELECT 1 FROM auth_users WHERE provider='google' AND subject=?", (claims['sub'],)).fetchone()
+        return self.store.create_session(claims, previous, intent='login' if exists else 'register')
+
     def tearDown(self): self.temp.cleanup()
 
     def run_async(self,fn):
@@ -72,7 +77,7 @@ class GoogleAuthTests(unittest.TestCase):
         self.run_async(check)
 
     def test_callback_requires_browser_cookie_and_is_single_use(self):
-        state,browser,nonce,_=self.store.create_flow()
+        state,browser,nonce,_=self.store.create_flow('register')
         claims={**self.claims,'nonce':nonce}
         async def check(client):
             with patch('app.auth.google_identity',new=AsyncMock(return_value=claims)) as exchange:
@@ -90,7 +95,7 @@ class GoogleAuthTests(unittest.TestCase):
         self.run_async(check)
 
     def test_user_cannot_call_developer_endpoints_or_spoof_role(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             self.assertEqual((await client.get('/api/rag/telemetry',headers={'X-Role':'developer'})).status_code,403)
@@ -100,7 +105,7 @@ class GoogleAuthTests(unittest.TestCase):
         self.run_async(check)
 
     def test_csrf_and_origin_required_and_logout_revokes_session(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         csrf=self.store.session(token)['csrf']
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
@@ -115,7 +120,7 @@ class GoogleAuthTests(unittest.TestCase):
         self.run_async(check)
 
     def test_developer_has_management_access(self):
-        token=self.store.create_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
+        token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             self.assertEqual((await client.get('/api/rag/telemetry')).status_code,200)
@@ -125,23 +130,23 @@ class GoogleAuthTests(unittest.TestCase):
         self.run_async(check)
 
     def test_sessions_are_hashed_expire_idle_and_have_absolute_limit(self):
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         with self.store.connect() as db:
             row=db.execute('SELECT * FROM auth_sessions').fetchone()
             self.assertEqual(row['session_hash'],digest(token));self.assertNotEqual(row['session_hash'],token)
             db.execute('UPDATE auth_sessions SET last_seen=?',(int(time.time())-IDLE_TTL,))
         self.assertIsNone(self.store.session(token))
-        token=self.store.create_session(self.claims)
+        token=self.seed_session(self.claims)
         with patch('app.auth.time.time',return_value=time.time()+SESSION_TTL+1):
             self.assertIsNone(self.store.session(token))
 
     def test_identity_uses_provider_sub_instead_of_email(self):
-        first=self.store.create_session(self.claims)
+        first=self.seed_session(self.claims)
         user_id=self.store.session(first)['id']
-        second=self.store.create_session({**self.claims,'email':'changed@example.test'},first)
+        second=self.seed_session({**self.claims,'email':'changed@example.test'},first)
         self.assertEqual(self.store.session(second)['id'],user_id)
         self.assertIsNone(self.store.session(first))
-        another=self.store.create_session({**self.claims,'sub':'different-subject'})
+        another=self.seed_session({**self.claims,'sub':'different-subject'})
         self.assertNotEqual(self.store.session(another)['id'],user_id)
 
     def test_claims_require_nonce_verified_email_and_invitation(self):

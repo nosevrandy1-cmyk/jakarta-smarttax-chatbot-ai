@@ -47,7 +47,7 @@ AUTH_ALLOWED_EMAILS=
 ```
 
 - `AUTH_DEVELOPER_EMAILS`: daftar email akun Google developer, dipisahkan koma. Jika kosong, tidak ada akun yang memperoleh akses dashboard. Tidak ada aturan first user becomes admin.
-- `AUTH_ALLOWED_EMAILS`: opsional untuk membatasi pilot. Jika kosong, seluruh akun Google terverifikasi dapat login selama diizinkan konfigurasi Google Cloud. Bila diisi, hanya email dalam daftar tersebut atau daftar developer yang boleh masuk. Daftar developer tetap harus diatur terpisah.
+- `AUTH_ALLOWED_EMAILS`: opsional untuk membatasi pilot. Jika kosong, akun Google terverifikasi dapat mendaftar selama diizinkan konfigurasi Google Cloud. Login hanya menerima akun JST yang sudah terdaftar. Bila diisi, hanya email dalam daftar tersebut atau daftar developer yang boleh masuk. Daftar developer tetap harus diatur terpisah.
 - Peran tidak diambil dari parameter URL, request body, localStorage, atau klaim role buatan pengguna. Daftar email developer hanya ditentukan oleh pengelola server.
 - Buka aplikasi menggunakan `http://localhost:3000`, bukan bergantian `127.0.0.1`. Host frontend dan callback harus sama; jangan campur keduanya. API frontend yang saat ini dikonfigurasi harus menuju `http://localhost:8000`.
 - Scope login tidak mencakup isi prompt/dokumen. Google menerima informasi identitas dan metadata login yang diperlukan alur autentikasi, bukan isi chat sebagai bagian permintaan login.
@@ -65,7 +65,7 @@ Frontend dapat tetap memakai proses development yang sudah berjalan. Refresh bro
 ## 3 Uji melalui browser
 
 1. Buka `http://localhost:3000/`. Sebelum login, chat dan dashboard tidak ditampilkan.
-2. Klik **Masuk dengan Google**. Pilih akun dan selesaikan persetujuan identitas Google sendiri.
+2. Akun baru: klik **Daftar**, kemudian **Daftar dengan Google**. Akun yang sudah terdaftar memakai **Masuk dengan Google**. Selesaikan langkah Google sendiri. Login akun yang belum terdaftar ditolak; daftar ulang akun lama juga ditolak.
 3. Login akun biasa: chatbot terbuka. Mengakses `/admin` atau `/audit` menampilkan akses khusus developer dan API pengelolaan menolak request.
 4. Login akun dalam `AUTH_DEVELOPER_EMAILS`: chatbot dan dashboard dapat dibuka. Tautan dashboard muncul pada area akun.
 5. Uji refresh; sesi tetap berlaku selama belum kedaluwarsa. Tombol **Keluar akun** mencabut sesi server dan membersihkan riwayat akun pada perangkat ini. Tab lain pada browser yang sama menerima pemberitahuan logout.
@@ -113,4 +113,17 @@ Laporan dan bukti pengujian tersedia di [GOOGLE_AUTH_IMPLEMENTATION_2026-10-29.m
 
 Akun developer harus tercantum dalam konfigurasi serta mempunyai identitas email yang otoritatif bagi Google: Gmail terverifikasi atau akun Workspace terverifikasi dengan klaim `hd`. Email pihak ketiga tanpa klaim tersebut tidak memperoleh akses developer. Allowlist pilot menerapkan persyaratan otoritas yang sama.
 
-CORS hanya mengizinkan `AUTH_PUBLIC_URL`. Pada HTTPS, cookie menggunakan awalan `__Host-`, Secure, HttpOnly, dan SameSite=Lax. Skema database autentikasi versi 2 menyimpan status otoritas identitas dan pembatasan request. Batas lokal meliputi login 20/menit per IP, pemeriksaan sesi 120/menit per IP, chat 10/menit per pengguna, dan API 120/menit per pengguna. Gateway publik tetap memerlukan konfigurasi proxy tepercaya dan perlindungan tambahan.
+CORS hanya mengizinkan `AUTH_PUBLIC_URL`. Pada HTTPS, cookie menggunakan awalan `__Host-`, Secure, HttpOnly, dan SameSite=Lax. Skema database autentikasi versi 3 mempertahankan status otoritas identitas dan pembatasan request, serta menambahkan tujuan daftar/masuk pada alur OAuth. Batas lokal meliputi login 20/menit per IP, pemeriksaan sesi 120/menit per IP, chat 10/menit per pengguna, dan API 120/menit per pengguna. Gateway publik tetap memerlukan konfigurasi proxy tepercaya dan perlindungan tambahan.
+
+## Daftar dan masuk terpisah — 29 Oktober 2026
+
+- Halaman awal menampilkan Masuk dengan Google dan tautan Belum punya akun? Daftar.
+- `/api/auth/google/login` hanya menerbitkan sesi untuk akun JST yang sudah ada.
+- `/api/auth/google/register` membuat akun setelah identitas Google terverifikasi, kemudian menerbitkan sesi.
+- Akun belum terdaftar yang mencoba masuk mendapat pesan untuk mendaftar. Akun lama yang mencoba daftar mendapat pesan untuk masuk.
+- Tujuan daftar/masuk disimpan di database flow dan terikat state/cookie, bukan dipercaya dari query callback.
+- Akun dan sesi lama dipertahankan. Flow OAuth lama dimigrasikan sebagai login; tidak dapat membuat akun baru secara otomatis.
+- Callback, Client ID, dan Client Secret tetap sama. Tidak perlu menyalin ulang `.env` atau membuat OAuth Client baru.
+- Delapan tes baru menambah suite menjadi 61 tes backend; TypeScript dan build frontend lolos. Pengujian Google nyata untuk jalur baru masih perlu dilakukan pengguna.
+
+Rincian: [Pemisahan pendaftaran dan login](GOOGLE_AUTH_REGISTRATION_2026-10-29.md).
