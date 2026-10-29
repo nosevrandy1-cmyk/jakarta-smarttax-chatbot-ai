@@ -11,10 +11,7 @@ dependencies = [
     "ollama>=0.4.7",
     "qdrant-client>=1.12.0",
     "chromadb>=0.5.0",
-    "pymupdf==1.26.6; sys_platform == 'win32'",
-    "pymupdf>=1.24.0; sys_platform != 'win32'",
-    "pymupdf4llm==0.0.27; sys_platform == 'win32'",
-    "pymupdf4llm>=0.0.17,<1.0.0; sys_platform != 'win32'",
+    "pypdf>=6.21.4,<7",
     "langchain-text-splitters>=0.3.0",
     "pandas==2.3.3; sys_platform == 'win32'",
     "pandas>=2.2.0; sys_platform != 'win32'",
@@ -25,6 +22,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "python-dotenv>=1.0.0",
     "pydantic>=2.9.0",
+    "google-auth[requests]>=2.41,<3",
 ]
 
 [tool.uv]

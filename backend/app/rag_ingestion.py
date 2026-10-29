@@ -2,15 +2,14 @@ from datetime import datetime, timezone
 import hashlib
 import io
 from pathlib import Path
-import tempfile
 from typing import Any, Dict, List, Optional
 
 import chromadb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import pandas as pd
 from pydantic import BaseModel, Field
-import pymupdf
-import pymupdf4llm
+from pypdf import PdfReader
+from pypdf.errors import PyPdfError
 
 from .config import (
     CHROMA_COLLECTION,
@@ -106,6 +105,7 @@ class SmartTaxChromaStore:
         self.collection_name = CHROMA_COLLECTION
         self.collection = self.client.get_or_create_collection(
             name=self.collection_name,
+            embedding_function=None,  # Only explicit application-generated vectors are accepted.
             metadata={"hnsw:space": "cosine"},
         )
         self.splitter = RecursiveCharacterTextSplitter(
@@ -129,19 +129,19 @@ class SmartTaxChromaStore:
         dom = normalize_domain(domain)
         tema = domain_to_theme(dom)
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = Path(tmp.name)
-
+        # Pure Python parsing avoids unsigned native PDF DLLs on Windows.
+        # Keep the stream in memory: no uploaded paths or temporary PDF files.
         try:
-            # Own the document handle so Windows can remove the temporary file
-            # after extraction, including when the Markdown converter raises.
-            with pymupdf.open(str(tmp_path)) as doc:
-                md_text = pymupdf4llm.to_markdown(doc)
-                if not md_text or not md_text.strip():
-                    md_text = "\n\n".join(page.get_text("text") for page in doc)
-        finally:
-            tmp_path.unlink(missing_ok=True)
+            with io.BytesIO(file_bytes) as stream:
+                reader = PdfReader(stream)
+                if reader.is_encrypted:
+                    raise ValueError("PDF terenkripsi belum didukung. Unggah salinan tanpa password.")
+                md_text = "\n\n".join(
+                    page.extract_text(extraction_mode="layout") or ""
+                    for page in reader.pages
+                )
+        except (PyPdfError, OSError) as exc:
+            raise ValueError("File PDF rusak atau tidak dapat dibaca.") from exc
 
         cleaned_md = (md_text or "").strip()
         if not cleaned_md:

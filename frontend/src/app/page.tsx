@@ -1,5 +1,8 @@
 "use client";
 
+import { AccountMenu, useAuth } from "@/components/AuthProvider";
+import { apiFetch } from "@/lib/api";
+
 import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import RenameChatDialog from "@/components/RenameChatDialog";
@@ -33,10 +36,10 @@ import {
   getStartersForThemeAndMode,
 } from "@/config/smarttaxConfig";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const STORAGE_KEY = "jakarta_smarttax_sessions_v3";
-const LEGACY_STORAGE_KEY = "jakarta_smarttax_sessions_v2";
-const STORAGE_MIGRATION_KEY = "jakarta_smarttax_data_version";
+
+
+
+
 
 interface TaxThemeConfig {
   code: TaxThemeCode;
@@ -347,6 +350,8 @@ function FormattedMarkdown({
 }
 
 export default function TaxAssistantView() {
+  const { user } = useAuth();
+  const storageKey = `jakarta_smarttax_sessions_v3_user_${user.id}`;
   const [appearance, setAppearance] = useState<"dark" | "light">("dark");
   useEffect(() => {
     try {
@@ -367,7 +372,7 @@ export default function TaxAssistantView() {
     const controller = new AbortController();
     async function loadLocalModels() {
       try {
-        const response = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+        const response = await apiFetch(`/api/health`, { signal: controller.signal });
         if (!response.ok) return;
         const health = await response.json();
         const installed: string[] = health.ollama?.installed_local_models || [];
@@ -445,21 +450,8 @@ export default function TaxAssistantView() {
       setSidebarOpen(false);
     }
     try {
-      // Keep legacy conversations out of the active UI and model history.
-      // Archive once so existing user conversations remain recoverable locally.
-      if (localStorage.getItem(STORAGE_MIGRATION_KEY) !== "3") {
-        const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-        if (legacy && !localStorage.getItem(`${LEGACY_STORAGE_KEY}_archived`)) {
-          localStorage.setItem(`${LEGACY_STORAGE_KEY}_archived`, legacy);
-        }
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
-        localStorage.setItem(STORAGE_MIGRATION_KEY, "3");
-        if (!localStorage.getItem(STORAGE_KEY)) {
-          setSessions([{ id: "default-session", title: "Percakapan Baru", theme: "PBB-P2", updatedAt: Date.now(), messages: [] }]);
-          setActiveSessionId("default-session");
-        }
-      }
-      const raw = localStorage.getItem(STORAGE_KEY);
+      // Shared anonymous/legacy storage is never automatically assigned to a Google account.
+      const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
@@ -474,19 +466,19 @@ export default function TaxAssistantView() {
     } finally {
       setHydrated(true);
     }
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!hydrated) return;
     try {
       localStorage.setItem(
-        STORAGE_KEY,
+        storageKey,
         JSON.stringify({ sessions, activeSessionId })
       );
     } catch {
       // Ignore quota errors
     }
-  }, [sessions, activeSessionId, hydrated]);
+  }, [sessions, activeSessionId, hydrated, storageKey]);
 
   useEffect(() => {
     if (!userScrolledUpRef.current) {
@@ -727,7 +719,7 @@ export default function TaxAssistantView() {
     abortControllerRef.current = controller;
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      const response = await apiFetch(`/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -919,6 +911,8 @@ export default function TaxAssistantView() {
     showToastMessage(`Disalin: ${codeText}`);
   }
 
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
+
   const isChatEmpty = activeSession.messages.length === 0;
 
   return (
@@ -1096,47 +1090,7 @@ export default function TaxAssistantView() {
             minWidth: "240px",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "8px 10px",
-              borderRadius: "8px",
-            }}
-          >
-            <div
-              style={{
-                width: "30px",
-                height: "30px",
-                borderRadius: "999px",
-                background: "var(--bg-raised)",
-                border: "1px solid rgba(var(--chat-ink), 0.1)",
-                color: "var(--text-primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 600,
-                fontSize: "11px",
-              }}
-            >
-              ST
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  color: "var(--text-primary)",
-                }}
-              >
-                Jakarta SmartTax 2026
-              </div>
-              <div style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
-                Tim AI Jakarta SmartTax
-              </div>
-            </div>
-          </div>
+          <AccountMenu />
         </div>
       </aside>
 

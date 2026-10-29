@@ -42,22 +42,21 @@ Untuk environment lama yang sudah memakai runtime lain, hentikan backend dan cad
 | Python yang diuji | 3.12.10 |
 | Pandas | 2.3.3 |
 | NumPy | 2.2.6 |
-| PyMuPDF | 1.26.6 |
-| PyMuPDF4LLM | 0.0.27 |
+| pypdf (lintas platform) | 6.21.4 |
 
 Pin di `pyproject.toml` menggunakan marker Windows. Batas dependensi platform lain dipertahankan. Rentang Python proyek menjadi 3.11 sampai sebelum 3.14 karena resolver dan ketersediaan wheel pada platform yang diwajibkan belum mendukung semua versi Python yang sebelumnya diiklankan. Python 3.11/3.13 belum diuji langsung dalam perbaikan ini.
 
-DLL Pandas/PyMuPDF dan runtime Python sebelumnya ditolak oleh kebijakan Windows pada perangkat yang diperiksa. Versi di atas berhasil dimuat tanpa perubahan kebijakan. Hasil kepercayaan Smart App Control dapat berbeda di perangkat lain; daftar ini bukan jaminan semua perangkat akan mengizinkannya.
+DLL Pandas/PyMuPDF dan runtime Python sebelumnya ditolak oleh kebijakan Windows pada perangkat yang diperiksa. PyMuPDF/PyMuPDF4LLM kini diganti pypdf tanpa DLL PDF native. Versi di atas berhasil dimuat tanpa perubahan kebijakan. Hasil kepercayaan Smart App Control dapat berbeda di perangkat lain; daftar ini bukan jaminan semua perangkat akan mengizinkannya.
 
 ## Pemeriksaan
 
 ```powershell
-uv run --locked python -c "import ctypes, pandas, numpy, pymupdf, chromadb; print('Imports OK')"
+uv run --locked python -c "import ctypes, pandas, numpy, pypdf, chromadb; print('Imports OK')"
 uv run --locked python -m unittest discover -s tests -v
-Invoke-RestMethod http://127.0.0.1:8000/api/health
+Invoke-RestMethod http://127.0.0.1:8000/api/auth/session
 ```
 
-Perbaikan ini lolos 21 tes, termasuk PDF/Excel melalui database sementara dan pelepasan file PDF pada jalur berhasil maupun error. `rag_ingestion.py` sekarang memiliki kepemilikan eksplisit atas handle dokumen PDF agar berkas sementara bisa dihapus pada Windows.
+Pemeriksaan terbaru lolos 53 tes backend. Ekstraksi PDF bekerja melalui stream dalam memori tanpa file sementara. PDF kosong, rusak, terenkripsi, atau tanpa teks ditolak sebelum penulisan koleksi. Excel juga diuji pada database sementara. Ekstraksi tabel kompleks belum setara konversi Markdown sebelumnya; PDF scan tetap membutuhkan OCR. Smart App Control terkonfirmasi tetap On. Lihat laporan audit Google Auth untuk temuan dependensi yang masih tersisa.
 
 Peringatan PyTorch tidak terpasang tidak menghentikan backend: inferensi model berjalan melalui Ollama, sedangkan tokenizer/embedding CPU tetap tersedia sesuai implementasi proyek. Ollama harus berjalan terpisah agar model dapat menjawab.
 

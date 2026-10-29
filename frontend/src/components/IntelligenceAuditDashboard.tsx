@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api";
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
 import { BrainIcon } from "@phosphor-icons/react/dist/csr/Brain";
@@ -36,7 +38,7 @@ import type {
   TaxDomainCode,
 } from "@/types/audit";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 const TAX_DOMAINS: TaxDomainCode[] = [
   "PBB-P2",
@@ -117,7 +119,7 @@ export default function IntelligenceAuditDashboard({
 
   const fetchTelemetry = useCallback(async () => {
     try {
-      const resp = await fetch(`${API_BASE}/api/rag/telemetry`);
+      const resp = await apiFetch(`/api/rag/telemetry`);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json: DashboardTelemetryState = await resp.json();
       setData(json);
@@ -141,7 +143,7 @@ export default function IntelligenceAuditDashboard({
     setIsEvaluating(true);
     setStatusBanner(null);
     try {
-      const resp = await fetch(`${API_BASE}/api/rag/evaluate`, {
+      const resp = await apiFetch(`/api/rag/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -187,7 +189,7 @@ export default function IntelligenceAuditDashboard({
       formData.append("kontributor", pdfContributor);
       formData.append("auto_evaluate", "true");
 
-      const resp = await fetch(`${API_BASE}/api/rag/ingest-pdf`, {
+      const resp = await apiFetch(`/api/rag/ingest-pdf`, {
         method: "POST",
         body: formData,
       });
@@ -224,7 +226,7 @@ export default function IntelligenceAuditDashboard({
       formData.append("kontributor", excelContributor);
       formData.append("auto_evaluate", "true");
 
-      const resp = await fetch(`${API_BASE}/api/rag/ingest-excel`, {
+      const resp = await apiFetch(`/api/rag/ingest-excel`, {
         method: "POST",
         body: formData,
       });
@@ -257,7 +259,7 @@ export default function IntelligenceAuditDashboard({
     setIsIngesting(true);
     setStatusBanner(null);
     try {
-      const resp = await fetch(`${API_BASE}/api/rag/learn-reasoning`, {
+      const resp = await apiFetch(`/api/rag/learn-reasoning`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(reasoningForm),

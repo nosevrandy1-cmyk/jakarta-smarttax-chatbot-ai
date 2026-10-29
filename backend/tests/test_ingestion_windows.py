@@ -1,55 +1,64 @@
 import io
-from pathlib import Path
-import tempfile
 import unittest
 from unittest.mock import patch
 
-import test_dashboard_empty as fixtures
 import pandas as pd
-import pymupdf
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+import test_dashboard_empty as fixtures
+
+
+def make_pdf(text=None, encrypted=False):
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    if text:
+        font = DictionaryObject({NameObject('/Type'): NameObject('/Font'),
+            NameObject('/Subtype'): NameObject('/Type1'), NameObject('/BaseFont'): NameObject('/Helvetica')})
+        page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'):
+            DictionaryObject({NameObject('/F1'): writer._add_object(font)})})
+        stream = DecodedStreamObject()
+        stream.set_data(f'BT /F1 12 Tf 72 720 Td ({text}) Tj ET'.encode('ascii'))
+        page[NameObject('/Contents')] = writer._add_object(stream)
+    if encrypted:
+        writer.encrypt('test-only-password')
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
 
 
 class WindowsIngestionTests(unittest.TestCase):
     def setUp(self):
         self.store = fixtures.chroma_store
         self.assertEqual(fixtures.config.CHROMA_STORAGE_DIR, (fixtures.TEST_ROOT / 'chroma').resolve())
-        doc = pymupdf.open()
-        doc.new_page().insert_text((72, 72), 'JST isolated PDF verification with readable text.')
-        self.pdf = doc.tobytes()
-        doc.close()
 
-    def track_temporary_files(self, paths):
-        original = tempfile.NamedTemporaryFile
-        def create(*args, **kwargs):
-            result = original(*args, **kwargs)
-            paths.append(Path(result.name))
-            return result
-        return patch('app.rag_ingestion.tempfile.NamedTemporaryFile', side_effect=create)
+    def test_pdf_text_reaches_collection_without_temporary_file(self):
+        with patch('tempfile.NamedTemporaryFile', side_effect=AssertionError('Unexpected disk staging')):
+            result = self.store.ingest_pdf(make_pdf('JST PDF readable reference'), 'compatibility.pdf')
+        self.assertGreater(result['chunks_ingested'], 0)
+        records = self.store.collection.get(where={'doc_name': 'compatibility.pdf'})
+        self.assertTrue(any('JST PDF readable reference' in text for text in records['documents']))
 
-    def test_pdf_extraction_releases_and_removes_temporary_file(self):
-        paths = []
-        with self.track_temporary_files(paths):
-            summary = self.store.ingest_pdf(self.pdf, 'isolated-windows.pdf', 'PBB-P2', 'Test runner')
-        self.assertGreater(summary['chunks_ingested'], 0)
-        self.assertTrue(paths)
-        self.assertTrue(all(not p.exists() for p in paths))
+    def assert_rejected_without_writes(self, data, message):
+        with patch.object(self.store.collection, 'upsert') as upsert:
+            with self.assertRaisesRegex(ValueError, message):
+                self.store.ingest_pdf(data, 'invalid.pdf')
+            upsert.assert_not_called()
 
-    def test_converter_error_still_closes_document_and_removes_file(self):
-        paths = []
-        documents = []
-        def fail(document):
-            documents.append(document)
-            raise RuntimeError('conversion test error')
-        with self.track_temporary_files(paths), patch('app.rag_ingestion.pymupdf4llm.to_markdown', side_effect=fail):
-            with self.assertRaisesRegex(RuntimeError, 'conversion test error'):
-                self.store.ingest_pdf(self.pdf, 'isolated-failure.pdf', 'PBB-P2', 'Test runner')
-        self.assertTrue(documents[0].is_closed)
-        self.assertTrue(paths)
-        self.assertTrue(all(not p.exists() for p in paths))
+    def test_malformed_pdf_has_readable_error_without_writes(self):
+        self.assert_rejected_without_writes(b'%PDF-1.7\ninvalid', 'rusak|dibaca')
 
-    def test_xlsx_ingestion_with_windows_dependency_versions(self):
+    def test_encrypted_pdf_is_rejected_without_writes(self):
+        self.assert_rejected_without_writes(make_pdf('Private document', encrypted=True), 'terenkripsi')
+
+    def test_image_only_or_blank_pdf_is_not_ingested(self):
+        self.assert_rejected_without_writes(make_pdf(), 'Tidak ditemukan teks')
+
+    def test_empty_upload_is_rejected(self):
+        self.assert_rejected_without_writes(b'', 'kosong')
+
+    def test_xlsx_ingestion_is_preserved(self):
         output = io.BytesIO()
         pd.DataFrame([{'kategori': 'PBB-P2', 'keterangan': 'isolated worksheet verification'}]).to_excel(output, index=False)
-        summary = self.store.ingest_excel(output.getvalue(), 'isolated-windows.xlsx', 'PBB-P2', 'Test runner')
-        self.assertEqual(summary['rows_ingested'], 1)
-        self.assertEqual(summary['sheets_processed'], 1)
+        result = self.store.ingest_excel(output.getvalue(), 'compatibility.xlsx', 'PBB-P2', 'Test runner')
+        self.assertEqual(result['rows_ingested'], 1)
+        self.assertEqual(result['sheets_processed'], 1)

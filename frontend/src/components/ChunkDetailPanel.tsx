@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api";
+
 import { useEffect, useRef, useState } from "react";
 import { XIcon } from "@phosphor-icons/react/dist/csr/X";
 import { MagnifyingGlassIcon } from "@phosphor-icons/react/dist/csr/MagnifyingGlass";
@@ -10,7 +12,7 @@ type Part = { id: string; source_id: string; document_name: string; text: string
   chunk_index: number | null; page: number | null; sheet: string | null; row: number | null; source_type: string };
 type Result = { documents: Source[]; total_documents: number; total_chunks: number;
   matched_chunks: number; offset: number; limit: number; items: Part[] };
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 
 export default function ChunkDetailPanel({ onClose }: { onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -31,7 +33,7 @@ export default function ChunkDetailPanel({ onClose }: { onClose: () => void }) {
       try {
         const params = new URLSearchParams({ q: search, offset: String(offset), limit: String(limit) });
         if (source) params.set("source_id", source);
-        const response = await fetch(`${API_BASE}/api/rag/chunks?${params}`, { signal: controller.signal });
+        const response = await apiFetch(`/api/rag/chunks?${params}`, { signal: controller.signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         setResult(await response.json());
       } catch (cause) {

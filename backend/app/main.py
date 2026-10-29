@@ -9,7 +9,6 @@ import httpx
 from pydantic import BaseModel, Field
 
 from .config import (
-    CORS_ORIGINS,
     DEEPSEEK_DRAFTING_MODEL,
     DEFAULT_CHAT_MODEL,
     HARDWARE_PROFILE,
@@ -36,6 +35,8 @@ from .tax_db import (
 )
 from .vector_store import vector_store
 
+from .auth import install_auth
+
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
@@ -58,12 +59,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+install_auth_settings, _auth_store = install_auth(app)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=[install_auth_settings.public_url],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
 )
 
 
@@ -98,7 +101,7 @@ class EvaluateRequestInput(BaseModel):
 
 
 @app.get("/api/health")
-async def health_check() -> Dict[str, Any]:
+async def health_check(request: Request) -> Dict[str, Any]:
     local_models: List[str] = []
     ollama_running = False
     try:
@@ -111,6 +114,9 @@ async def health_check() -> Dict[str, Any]:
     except Exception:
         ollama_running = False
 
+    if not install_auth_settings.is_developer(request.state.auth_user):
+        return {"status": "ok", "ollama": {"running": ollama_running,
+            "default_model": DEFAULT_CHAT_MODEL, "installed_local_models": local_models}}
     sppt_rows = get_all_sppt_records()
     reg_chunks = get_regulasi_chunks()
     legal_rows = get_all_legal_corpus()
@@ -225,7 +231,7 @@ async def ingest_pdf_endpoint(
         raise HTTPException(
             status_code=400, detail="Hanya file berformat .pdf yang diizinkan."
         )
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
     if not file_bytes or len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=400,
@@ -275,7 +281,7 @@ async def ingest_excel_endpoint(
             status_code=400,
             detail="Hanya file berformat .xlsx, .xls, atau .csv yang diizinkan.",
         )
-    file_bytes = await file.read()
+    file_bytes = await file.read(MAX_UPLOAD_BYTES + 1)
     if not file_bytes or len(file_bytes) > MAX_UPLOAD_BYTES:
         raise HTTPException(
             status_code=400,
@@ -332,7 +338,7 @@ async def demo_data_disabled_endpoint() -> Dict[str, Any]:
 
 
 @app.post("/api/chat")
-async def chat_endpoint(req: ChatRequestInput) -> Dict[str, Any]:
+async def chat_endpoint(req: ChatRequestInput, request: Request) -> Dict[str, Any]:
     clean_msg = req.message.strip()
     if not clean_msg:
         raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong.")
@@ -344,14 +350,14 @@ async def chat_endpoint(req: ChatRequestInput) -> Dict[str, Any]:
     return await run_smarttax_chat(
         user_message=clean_msg,
         history=history_dicts,
-        model=req.model or DEFAULT_CHAT_MODEL,
+        model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,
         tema_pajak=tema,
         mode_kapabilitas=mode_kap,
     )
 
 
 @app.post("/api/chat/stream")
-async def chat_stream_endpoint(req: ChatRequestInput) -> StreamingResponse:
+async def chat_stream_endpoint(req: ChatRequestInput, request: Request) -> StreamingResponse:
     clean_msg = req.message.strip()
     if not clean_msg:
         raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong.")
@@ -364,7 +370,7 @@ async def chat_stream_endpoint(req: ChatRequestInput) -> StreamingResponse:
         stream_smarttax_chat(
             user_message=clean_msg,
             history=history_dicts,
-            model=req.model or DEFAULT_CHAT_MODEL,
+            model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,
             tema_pajak=tema,
             mode_kapabilitas=mode_kap,
         ),

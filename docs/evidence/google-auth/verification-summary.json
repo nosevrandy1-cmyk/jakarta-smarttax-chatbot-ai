@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Jakarta",
+  "branch": "feat/google-auth",
+  "base_commit": "fecc27b",
+  "backend_tests": {
+    "passed": 53,
+    "failed": 0
+  },
+  "typescript": "passed",
+  "isolated_frontend_production_build": "passed",
+  "npm_production_audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "python_audit": {
+    "status": "findings_remain",
+    "findings": [
+      {
+        "package": "chromadb",
+        "version": "1.5.9",
+        "advisories": [
+          {
+            "id": "PYSEC-2026-311",
+            "aliases": [
+              "GHSA-f4j7-r4q5-qw2c",
+              "CVE-2026-45829"
+            ],
+            "fix_versions": []
+          },
+          {
+            "id": "PYSEC-2026-3814",
+            "aliases": [
+              "CVE-2026-45833",
+              "GHSA-36p7-vc44-83pf"
+            ],
+            "fix_versions": []
+          },
+          {
+            "id": "PYSEC-2026-3815",
+            "aliases": [
+              "GHSA-xph7-9rjv-w5fr",
+              "CVE-2026-45831"
+            ],
+            "fix_versions": []
+          },
+          {
+            "id": "PYSEC-2026-3813",
+            "aliases": [
+              "CVE-2026-45830",
+              "GHSA-2wm9-hf6c-p5cr"
+            ],
+            "fix_versions": []
+          }
+        ]
+      }
+    ]
+  },
+  "live_google_login": "Confirmed successful by user before final hardening; full live multi-account retest still recommended.",
+  "deployment_assessment": "Local development review only; unresolved dependency advisories block an unconditional public production approval.",
+  "source_sha256": {
+    "backend/app/auth.py": "d38210cd50ac128dcd9bfcc46d622d52f3c1a4c80cc22479d1bba2b3ad8ccc50",
+    "backend/app/main.py": "488c0c6d390a8639247d46189c7e939d2a312abff3526acbde0f747ce44ec888",
+    "backend/app/rag_ingestion.py": "4cd68d6d41fab3bbce031aa386d32a5e160cc78ac0b44ae20896e4a49d7087ed",
+    "backend/tests/test_ingestion_windows.py": "c4383c8e05504154f562dc69b432ba505f05cfb8d518f9920f6df5d414be1c2d",
+    "backend/tests/test_auth.py": "1b18ab019a58663ff241f996925a863f94b0d8c2f0ad0c22b9445a59a862315c",
+    "backend/tests/test_auth_hardening.py": "c6047cc784b09b6fe89a523bfe75180e1ffb5cdf66121a1e6423250af5960bb5",
+    "frontend/src/components/AuthProvider.tsx": "a07e769ef445e88b537f8781f24498772dee467d2fc454b8d3c39f2d27a51899",
+    "frontend/src/lib/api.ts": "198a860746c573268b6546faf38bef13ec5c4ffcc4909f6622257e8a83a07211",
+    "backend/pyproject.toml": "5d032596eaae633a98570e3c626c6306c6f8acf8c3490c89b65610f00d7d1b9d",
+    "backend/uv.lock": "6cd76f2874977dabc9cdeb00d1d1f497fa0e5ea438d5efabe15d7086a096439e",
+    "frontend/package.json": "d8b3c9f1afc396f6e6e7a05e4169195d3d13c3b007b04b1cd6de73aaa6d0d6f6",
+    "frontend/package-lock.json": "cc51eb1167ba6a3d08194c54d9b0ce8be48d8f12c89787018e7d825404b55bd5"
+  }
+}

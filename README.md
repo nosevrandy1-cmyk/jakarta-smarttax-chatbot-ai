@@ -35,7 +35,7 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
   - Tabel `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai DPP/NJOP, pokok pajak, denda, dan status pembayaran.
   - Tabel `korpus_hukum_dki`: Menyimpan struktur pasal, ayat, bab/bagian, bunyi norma hukum, dan kaidah perumusan (*legal drafting*) untuk tiap kategori pajak.
 - **Vector Database (ChromaDB `./smarttax_vectordb` + Qdrant `jakarta_smarttax_kb`):**
-  - **ChromaDB (`jakarta_smarttax_knowledge`, `hnsw:space = cosine`):** Mesin penyimpanan vektor persisten untuk 3 jalur ingesti RAG multi-sumber (`pdf_regulasi` melalui `pymupdf4llm` + `RecursiveCharacterTextSplitter`, `excel_data` melalui serialisasi baris semantik `pandas` + `openpyxl`, dan `user_reasoning` untuk *live few-shot learning* kasus pajak).
+  - **ChromaDB (`jakarta_smarttax_knowledge`, `hnsw:space = cosine`):** Mesin penyimpanan vektor persisten untuk 3 jalur ingesti RAG multi-sumber (`pdf_regulasi` melalui `pypdf` (ekstraksi teks bertata letak dasar) + `RecursiveCharacterTextSplitter`, `excel_data` melalui serialisasi baris semantik `pandas` + `openpyxl`, dan `user_reasoning` untuk *live few-shot learning* kasus pajak).
   - **Qdrant (`jakarta_smarttax_kb`):** Menyimpan indeks vektor berdimensi `384` untuk pencarian semantik objek pajak dan korpus hukum.
 - **Embedding Engine (`backend/app/embedder.py`):** Menggunakan model `nomic-embed-text` yang terikat pada CPU (*CPU-bound embeddings*) agar VRAM GPU tetap 100% didedikasikan untuk inferensi LLM utama.
 
@@ -85,6 +85,18 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 ```
 
 ---
+
+## Login Google dan akses dashboard
+
+Chatbot sekarang memerlukan login Google. Dashboard dan API pengelolaan hanya
+dapat dipakai akun developer yang ditetapkan pada konfigurasi backend.
+Ikuti [panduan Google Auth](docs/GOOGLE_AUTH_SETUP.md) untuk membuat OAuth Client,
+menetapkan callback, dan menambahkan konfigurasi pada `.env` yang sudah ada.
+Jangan menimpa `.env` saat menjalankan ulang aplikasi. Tanpa konfigurasi Google,
+halaman login tampil tetapi akses chat dan dashboard tetap terkunci.
+
+Riwayat pada tahap ini masih berada di browser dan dipisahkan per akun;
+sinkronisasi history server serta kontribusi data training belum tersedia.
 
 ## Cara Menjalankan di Mesin Lokal
 
@@ -174,3 +186,5 @@ Buka `http://localhost:3000` di *browser*.
 Penjelasan lengkap mengenai arsitektur kode, cara kerja *dual-model* **Gemma & DeepSeek**, serta panduan file mana yang harus diedit saat mengembangkan fitur baru tersedia di:
 
 👉 **[Panduan Engineering Tim AI Jakarta SmartTax 2026 (`docs/ENGINEERING_GUIDE.md`)](docs/ENGINEERING_GUIDE.md)**
+
+Laporan implementasi dan audit Google Auth: [dokumen 29 Oktober 2026](docs/GOOGLE_AUTH_IMPLEMENTATION_2026-10-29.md).
