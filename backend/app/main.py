@@ -37,6 +37,7 @@ from .vector_store import vector_store
 
 from .auth import install_auth
 from .chat_history import install_history
+from .source_routes import install_source_routes
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -62,6 +63,7 @@ app = FastAPI(
 
 install_auth_settings, _auth_store = install_auth(app)
 install_history(app, _auth_store)
+install_source_routes(app, chroma_store, embedder)
 
 app.add_middleware(
     CORSMiddleware,
@@ -221,8 +223,21 @@ async def run_benchmark_evaluation_endpoint(
     }
 
 
+def activate_uploaded_source(summary, request):
+    try:
+        chroma_store.archive.activate(summary['source_id'], request.state.auth_user['id'],
+                                      chroma_store.collection, embedder)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except Exception:
+        raise HTTPException(503, "Pengindeksan belum berhasil. Sumber belum aktif; coba proses ulang.") from None
+    return {**summary, 'review_status': 'approved', 'activation_mode': 'automatic',
+            'total_collection_chunks': chroma_store.get_collection_telemetry()['total_chunks']}
+
+
 @app.post("/api/rag/ingest-pdf")
 async def ingest_pdf_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     domain: str = Form("PBB-P2"),
     kontributor: str = Form("Tim Regulasi Bapenda"),
@@ -254,15 +269,11 @@ async def ingest_pdf_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    summary = activate_uploaded_source(summary, request)
     snapshot = None
-    if auto_evaluate and eval_engine.evaluation_readiness()["ready"]:
-        snapshot = await eval_engine.run_evaluation(
-            trigger_event=f"Ingesti PDF Regulasi: {raw_name} ({summary['domain']})",
-            ingested_source_meta=summary,
-        )
     dashboard = await eval_engine.get_dashboard_state()
     return {
-        "status": "ingested",
+        "status": "active",
         "ingestion": summary,
         "snapshot": snapshot,
         "dashboard": dashboard,
@@ -271,6 +282,7 @@ async def ingest_pdf_endpoint(
 
 @app.post("/api/rag/ingest-excel")
 async def ingest_excel_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     category: str = Form("PBB-P2"),
     kontributor: str = Form("Analis Data Pajak"),
@@ -300,15 +312,11 @@ async def ingest_excel_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    summary = activate_uploaded_source(summary, request)
     snapshot = None
-    if auto_evaluate and eval_engine.evaluation_readiness()["ready"]:
-        snapshot = await eval_engine.run_evaluation(
-            trigger_event=f"Ingesti Tabel Pajak: {raw_name} ({summary['domain']})",
-            ingested_source_meta=summary,
-        )
     dashboard = await eval_engine.get_dashboard_state()
     return {
-        "status": "ingested",
+        "status": "active",
         "ingestion": summary,
         "snapshot": snapshot,
         "dashboard": dashboard,
@@ -316,17 +324,13 @@ async def ingest_excel_endpoint(
 
 
 @app.post("/api/rag/learn-reasoning")
-async def learn_reasoning_endpoint(payload: LearnReasoningPayload) -> Dict[str, Any]:
+async def learn_reasoning_endpoint(payload: LearnReasoningPayload, request: Request) -> Dict[str, Any]:
     summary = chroma_store.ingest_user_reasoning(payload)
+    summary = activate_uploaded_source(summary, request)
     snapshot = None
-    if eval_engine.evaluation_readiness()["ready"]:
-        snapshot = await eval_engine.run_evaluation(
-            trigger_event=f"Penambahan kasus rujukan: {summary['domain']}",
-            ingested_source_meta=summary,
-        )
     dashboard = await eval_engine.get_dashboard_state()
     return {
-        "status": "learned",
+        "status": "active",
         "ingestion": summary,
         "snapshot": snapshot,
         "dashboard": dashboard,

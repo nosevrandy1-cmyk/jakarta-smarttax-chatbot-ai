@@ -35,6 +35,7 @@ class WindowsIngestionTests(unittest.TestCase):
         with patch('tempfile.NamedTemporaryFile', side_effect=AssertionError('Unexpected disk staging')):
             result = self.store.ingest_pdf(make_pdf('JST PDF readable reference'), 'compatibility.pdf')
         self.assertGreater(result['chunks_ingested'], 0)
+        self.store.archive.review(result["source_id"], "approve", "test", "", self.store.collection, __import__("app.embedder", fromlist=["embedder"]).embedder)
         records = self.store.collection.get(where={'doc_name': 'compatibility.pdf'})
         self.assertTrue(any('JST PDF readable reference' in text for text in records['documents']))
 

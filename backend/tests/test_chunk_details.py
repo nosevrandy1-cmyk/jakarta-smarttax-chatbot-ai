@@ -15,12 +15,13 @@ class ChunkDetailTests(unittest.TestCase):
         self.assertEqual(chroma_store.collection.count(),0)
 
     def test_counts_search_pagination_and_metadata(self):
-        chroma_store.collection.upsert(ids=['pdf-one-0000','pdf-one-0001','pdf-two-0000'],
-            documents=['Kalimat pertama','Google login untuk proyek','Dokumen kedua'],
-            embeddings=[[0.1]*384]*3,
-            metadatas=[{'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':0},
-                {'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':1},
-                {'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':0,'page_number':2}])
+        from app.embedder import embedder
+        for texts, metas in [(['Kalimat pertama','Google login untuk proyek'],
+            [{'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':0},
+             {'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':1}]),
+            (['Dokumen kedua'],[{'source_type':'pdf_regulasi','doc_name':'Dokumen.pdf','domain':'PBB-P2','chunk_index':0,'page_number':2}])]:
+            source_id = chroma_store.archive.stage(texts, metas, None, 'Dokumen.pdf')
+            chroma_store.archive.review(source_id, 'approve', 'test', '', chroma_store.collection, embedder)
         result=chroma_store.get_chunk_details(limit=1)
         self.assertEqual(result['total_documents'],2)
         self.assertEqual(result['total_chunks'],3)

@@ -16,7 +16,7 @@ CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge_o
 
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
 INTELLIGENCE_HISTORY_PATH = BASE_DIR / "dashboard_intelligence_history.json"
-UPLOAD_STAGING_DIR = DATA_DIR / "uploads"
+UPLOAD_STAGING_DIR = Path(os.getenv("JST_UPLOAD_DIR", str(DATA_DIR / "uploads"))).resolve()
 
 OLLAMA_LOCAL_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_SECONDARY_URL = os.getenv("OLLAMA_SECONDARY_HOST", OLLAMA_LOCAL_URL).rstrip("/")

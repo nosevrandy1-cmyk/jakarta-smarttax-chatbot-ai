@@ -18,6 +18,7 @@ from .config import (
     UPLOAD_STAGING_DIR,
 )
 from .embedder import embedder
+from .source_review import SourceArchive
 from .tax_db import TAX_THEMES
 
 
@@ -101,6 +102,7 @@ class SmartTaxChromaStore:
     def __init__(self) -> None:
         CHROMA_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
         UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+        self.archive = SourceArchive(UPLOAD_STAGING_DIR)
         self.client = chromadb.PersistentClient(path=str(CHROMA_STORAGE_DIR))
         self.collection_name = CHROMA_COLLECTION
         self.collection = self.client.get_or_create_collection(
@@ -130,29 +132,29 @@ class SmartTaxChromaStore:
         tema = domain_to_theme(dom)
 
         # Pure Python parsing avoids unsigned native PDF DLLs on Windows.
-        # Keep the stream in memory: no uploaded paths or temporary PDF files.
+        # Extract in memory, then archive the original under an application-generated basename.
         try:
             with io.BytesIO(file_bytes) as stream:
                 reader = PdfReader(stream)
                 if reader.is_encrypted:
                     raise ValueError("PDF terenkripsi belum didukung. Unggah salinan tanpa password.")
-                md_text = "\n\n".join(
-                    page.extract_text(extraction_mode="layout") or ""
-                    for page in reader.pages
-                )
+                page_texts = [page.extract_text(extraction_mode="layout") or "" for page in reader.pages]
         except (PyPdfError, OSError) as exc:
             raise ValueError("File PDF rusak atau tidak dapat dibaca.") from exc
-
-        cleaned_md = (md_text or "").strip()
-        if not cleaned_md:
-            raise ValueError("Tidak ditemukan teks yang dapat diekstrak dari dokumen PDF.")
-
-        raw_chunks = self.splitter.split_text(cleaned_md)
+        raw_chunks = []
+        chunk_pages = []
+        warnings = []
+        for page_number, text in enumerate(page_texts, start=1):
+            if not text.strip():
+                warnings.append(f"Halaman {page_number} tidak memiliki teks; periksa apakah perlu OCR.")
+                continue
+            page_chunks = self.splitter.split_text(text.strip())
+            raw_chunks.extend(page_chunks)
+            chunk_pages.extend([page_number] * len(page_chunks))
         if not raw_chunks:
-            raw_chunks = [cleaned_md]
-
+            raise ValueError("Tidak ditemukan teks yang dapat diekstrak. OCR belum tersedia.")
         now_iso = datetime.now(timezone.utc).isoformat()
-        doc_hash = hashlib.sha1(f"{clean_name}:{len(file_bytes)}".encode("utf-8")).hexdigest()[:10]
+        doc_hash = hashlib.sha256(file_bytes).hexdigest()[:20]
 
         ids: List[str] = []
         prefixed_chunks: List[str] = []
@@ -170,22 +172,17 @@ class SmartTaxChromaStore:
                     "domain": dom,
                     "tema_pajak": tema,
                     "chunk_index": idx,
+                    "page_number": chunk_pages[idx],
+                    "page_count": len(page_texts),
                     "contributor": contributor.strip() or "Tim Regulasi Bapenda",
                     "ingested_at": now_iso,
                 }
             )
 
-        vectors = embedder.embed_texts(prefixed_chunks)
-        for start in range(0, len(ids), 100):
-            end = start + 100
-            self.collection.upsert(
-                ids=ids[start:end],
-                embeddings=vectors[start:end],
-                documents=prefixed_chunks[start:end],
-                metadatas=metadatas[start:end],
-            )
+        source_id = self.archive.stage(prefixed_chunks, metadatas, file_bytes, clean_name, warnings)
 
         summary = {
+            "source_id": source_id, "review_status": "pending",
             "source_type": "pdf_regulasi",
             "doc_name": clean_name,
             "domain": dom,
@@ -195,7 +192,6 @@ class SmartTaxChromaStore:
             "ingested_at": now_iso,
             "total_collection_chunks": self.collection.count(),
         }
-        self.last_ingested_source = summary
         return summary
 
     def ingest_excel(
@@ -258,18 +254,10 @@ class SmartTaxChromaStore:
         if not ids:
             raise ValueError("Tidak ada baris data valid yang dapat diindeks dari file tabel.")
 
-        for start in range(0, len(ids), 100):
-            end = start + 100
-            batch_docs = docs[start:end]
-            batch_vecs = embedder.embed_texts(batch_docs)
-            self.collection.upsert(
-                ids=ids[start:end],
-                embeddings=batch_vecs,
-                documents=batch_docs,
-                metadatas=metadatas[start:end],
-            )
+        source_id = self.archive.stage(docs, metadatas, file_bytes, clean_name)
 
         summary = {
+            "source_id": source_id, "review_status": "pending",
             "source_type": "excel_data",
             "doc_name": clean_name,
             "domain": dom,
@@ -280,7 +268,6 @@ class SmartTaxChromaStore:
             "ingested_at": now_iso,
             "total_collection_chunks": self.collection.count(),
         }
-        self.last_ingested_source = summary
         return summary
 
     def ingest_user_reasoning(self, payload: LearnReasoningPayload) -> Dict[str, Any]:
@@ -294,7 +281,6 @@ class SmartTaxChromaStore:
         chunk_id = f"usr-reasoning-{dom.lower()}-{digest}"
         doc_name = f"Penalaran Kasus {dom} ({payload.kontributor.strip()})"
 
-        vec = embedder.embed_texts([formatted_block])
         metadata = {
             "source_type": "user_reasoning",
             "doc_name": doc_name,
@@ -304,14 +290,10 @@ class SmartTaxChromaStore:
             "contributor": payload.kontributor.strip(),
             "ingested_at": now_iso,
         }
-        self.collection.upsert(
-            ids=[chunk_id],
-            embeddings=vec,
-            documents=[formatted_block],
-            metadatas=[metadata],
-        )
+        source_id = self.archive.stage([formatted_block], [metadata], None, doc_name)
 
         summary = {
+            "source_id": source_id, "review_status": "pending",
             "chunk_id": chunk_id,
             "source_type": "user_reasoning",
             "doc_name": doc_name,
@@ -322,8 +304,16 @@ class SmartTaxChromaStore:
             "formatted_block": formatted_block,
             "total_collection_chunks": self.collection.count(),
         }
-        self.last_ingested_source = summary
         return summary
+
+    def approved_ids(self):
+        return [item["id"] for item in self.archive.list() if item["status"] == "approved"]
+
+    def active_records(self, include):
+        approved = self.approved_ids()
+        if not approved:
+            return {"ids": [], "documents": [], "metadatas": []}
+        return self.collection.get(where={"document_id": {"$in": approved}}, include=include)
 
     def query_knowledge(
         self,
@@ -338,7 +328,10 @@ class SmartTaxChromaStore:
             return []
 
         q_vec = embedder.embed_query(query)
-        where_clauses: List[Dict[str, Any]] = []
+        approved = self.approved_ids()
+        if not approved:
+            return []
+        where_clauses: List[Dict[str, Any]] = [{"document_id": {"$in": approved}}]
         if domain and domain.upper() in TAX_DOMAINS:
             where_clauses.append({"domain": domain.upper()})
         elif tema_pajak and tema_pajak.upper() in TAX_THEMES:
@@ -352,19 +345,10 @@ class SmartTaxChromaStore:
         elif len(where_clauses) > 1:
             where_filter = {"$and": where_clauses}
 
-        try:
-            res = self.collection.query(
-                query_embeddings=[q_vec],
-                n_results=min(top_k, total),
-                where=where_filter,
-                include=["documents", "metadatas", "distances"],
-            )
-        except Exception:
-            res = self.collection.query(
-                query_embeddings=[q_vec],
-                n_results=min(top_k, total),
-                include=["documents", "metadatas", "distances"],
-            )
+        res = self.collection.query(
+            query_embeddings=[q_vec], n_results=min(top_k, total), where=where_filter,
+            include=["documents", "metadatas", "distances"],
+        )
 
         ids_list = (res.get("ids") or [[]])[0]
         docs_list = (res.get("documents") or [[]])[0]
@@ -404,7 +388,7 @@ class SmartTaxChromaStore:
 
     def get_chunk_details(self, source_id: Optional[str] = None, query: str = "",
                           offset: int = 0, limit: int = 20) -> Dict[str, Any]:
-        records = self.collection.get(include=["documents", "metadatas"])
+        records = self.active_records(["documents", "metadatas"])
         documents: Dict[str, Dict[str, Any]] = {}
         chunks: List[Dict[str, Any]] = []
         search = query.strip().casefold()
@@ -434,7 +418,7 @@ class SmartTaxChromaStore:
 
 
     def get_collection_telemetry(self) -> Dict[str, Any]:
-        all_items = self.collection.get(include=["metadatas"])
+        all_items = self.active_records(["metadatas"])
         metas = all_items.get("metadatas") or []
 
         by_source_type: Dict[str, int] = {

@@ -173,7 +173,7 @@ class SmartTaxEvaluationEngine:
                 "golden_items": questions, "reason": reason}
 
     def _source_count(self) -> int:
-        return int(chroma_store.collection.count())
+        return int(chroma_store.get_collection_telemetry()["total_chunks"])
 
     def _require_evaluation_data(self) -> None:
         readiness = self.evaluation_readiness()

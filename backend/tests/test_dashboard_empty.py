@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 TEST_ROOT = Path(tempfile.mkdtemp(prefix="jst-dashboard-test-"))
 os.environ["CHROMA_PERSIST_DIR"] = str(TEST_ROOT / "chroma")
 os.environ["CHROMA_COLLECTION"] = "jst_dashboard_test"
+os.environ["JST_UPLOAD_DIR"] = str(TEST_ROOT / "uploads")
 
 from app import config
 from app.eval_engine import SmartTaxEvaluationEngine
@@ -36,10 +37,12 @@ class EmptyDashboardTests(unittest.TestCase):
         self.engine.golden_path.write_text("[]", encoding="utf-8")
 
     def add_source(self):
-        return chroma_store.ingest_excel(
+        result = chroma_store.ingest_excel(
             b"kategori,keterangan\nPBB-P2,rujukan pengujian terisolasi\n",
             "test_only.csv", "PBB-P2", "Test runner",
         )
+        chroma_store.archive.review(result["source_id"], "approve", "test-reviewer", "Test only", chroma_store.collection, __import__("app.embedder", fromlist=["embedder"]).embedder)
+        return result
 
     def test_reads_and_queries_do_not_seed_empty_collection(self):
         for _ in range(2):

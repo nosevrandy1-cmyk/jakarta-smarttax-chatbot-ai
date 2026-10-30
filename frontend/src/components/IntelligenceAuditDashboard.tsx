@@ -27,6 +27,7 @@ import { FoldersIcon } from "@phosphor-icons/react/dist/csr/Folders";
 import { ClockCounterClockwiseIcon } from "@phosphor-icons/react/dist/csr/ClockCounterClockwise";
 import { PlusIcon } from "@phosphor-icons/react/dist/csr/Plus";
 import "@/app/dashboard.css";
+import SourceReviewPanel from "@/components/SourceReviewPanel";
 import ChunkDetailPanel from "@/components/ChunkDetailPanel";
 import KnowledgeNeuralMap from "@/components/KnowledgeNeuralMap";
 
@@ -157,6 +158,7 @@ export default function IntelligenceAuditDashboard({
       }
       const res = await resp.json();
       setData(res.dashboard);
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setStatusBanner({
         type: "success",
         text: `Evaluasi Golden Dataset selesai. Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(
@@ -187,7 +189,6 @@ export default function IntelligenceAuditDashboard({
       formData.append("file", pdfFile);
       formData.append("domain", pdfDomain);
       formData.append("kontributor", pdfContributor);
-      formData.append("auto_evaluate", "true");
 
       const resp = await apiFetch(`/api/rag/ingest-pdf`, {
         method: "POST",
@@ -199,16 +200,18 @@ export default function IntelligenceAuditDashboard({
       }
       const res = await resp.json();
       setData(res.dashboard);
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setPdfFile(null);
       submittedForm.reset();
       setStatusBanner({
         type: "success",
-        text: `Sumber PDF "${res.ingestion.doc_name}" tersimpan (${res.ingestion.chunks_ingested} potongan). ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
+        text: `PDF "${res.ingestion.doc_name}" aktif (${res.ingestion.chunks_ingested} bagian teks). File asli dan halaman sumber tersimpan.`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatusBanner({ type: "error", text: `Ingesti PDF gagal: ${msg}` });
     } finally {
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setIsIngesting(false);
     }
   }
@@ -224,7 +227,6 @@ export default function IntelligenceAuditDashboard({
       formData.append("file", excelFile);
       formData.append("category", excelDomain);
       formData.append("kontributor", excelContributor);
-      formData.append("auto_evaluate", "true");
 
       const resp = await apiFetch(`/api/rag/ingest-excel`, {
         method: "POST",
@@ -236,11 +238,12 @@ export default function IntelligenceAuditDashboard({
       }
       const res = await resp.json();
       setData(res.dashboard);
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setExcelFile(null);
       submittedForm.reset();
       setStatusBanner({
         type: "success",
-        text: `Tabel "${res.ingestion.doc_name}" tersimpan (${res.ingestion.rows_ingested} baris). ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
+        text: `Tabel "${res.ingestion.doc_name}" aktif (${res.ingestion.rows_ingested} baris).`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -249,6 +252,7 @@ export default function IntelligenceAuditDashboard({
         text: `Ingesti Excel/CSV gagal: ${msg}`,
       });
     } finally {
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setIsIngesting(false);
     }
   }
@@ -270,9 +274,10 @@ export default function IntelligenceAuditDashboard({
       }
       const res = await resp.json();
       setData(res.dashboard);
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setStatusBanner({
         type: "success",
-        text: `Kasus rujukan ${res.ingestion.domain} berhasil disimpan. ${res.snapshot ? `Skor evaluasi RAG: ${res.snapshot.smarttax_iq_percentage.toFixed(2)}%.` : "Evaluasi menunggu dataset uji resmi."}`,
+        text: `Kasus rujukan ${res.ingestion.domain} aktif dan siap menjadi rujukan chatbot.`,
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -281,6 +286,7 @@ export default function IntelligenceAuditDashboard({
         text: `Injeksi penalaran gagal: ${msg}`,
       });
     } finally {
+      window.dispatchEvent(new Event("jst-source-uploaded"));
       setIsIngesting(false);
     }
   }
@@ -394,10 +400,11 @@ export default function IntelligenceAuditDashboard({
             {activeStudioTab !== "user_reasoning" ? <form onSubmit={activeStudioTab === "pdf_regulasi" ? handlePdfSubmit : handleExcelSubmit} className="jst-form" key={activeStudioTab}>
               <div className="jst-form-row"><label htmlFor="source-domain">Kategori pajak<select id="source-domain" value={activeStudioTab === "pdf_regulasi" ? pdfDomain : excelDomain} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfDomain(e.target.value as TaxDomainCode) : setExcelDomain(e.target.value as TaxDomainCode)}>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select></label><label htmlFor="source-contributor">Kontributor / unit kerja<input required id="source-contributor" value={activeStudioTab === "pdf_regulasi" ? pdfContributor : excelContributor} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfContributor(e.target.value) : setExcelContributor(e.target.value)} /></label></div>
               <label className="jst-upload-field" htmlFor="source-file"><UploadSimpleIcon size={30} weight="light" /><strong>{activeStudioTab === "pdf_regulasi" ? "Pilih dokumen PDF" : "Pilih tabel data pajak"}</strong><span>{activeStudioTab === "pdf_regulasi" ? "PDF · Dokumen rujukan proyek" : "XLSX / XLS / CSV · Tarif, ketetapan, atau rekapitulasi"}</span><input required id="source-file" type="file" accept={activeStudioTab === "pdf_regulasi" ? ".pdf" : ".xlsx,.xls,.csv"} onChange={e => activeStudioTab === "pdf_regulasi" ? setPdfFile(e.target.files?.[0] ?? null) : setExcelFile(e.target.files?.[0] ?? null)} /></label>
-              <p className="jst-note">Sumber akan diproses untuk pencarian RAG. Evaluasi otomatis berjalan jika dataset uji resmi sudah tersedia.</p><div className="jst-form-actions"><button className="jst-button jst-button-primary" disabled={busy || !(activeStudioTab === "pdf_regulasi" ? pdfFile : excelFile)} type="submit"><PlusIcon size={17} />{isIngesting ? "Memproses sumber…" : "Simpan sumber"}</button></div>
-            </form> : <form className="jst-form" onSubmit={handleReasoningSubmit}><div className="jst-form-row"><label htmlFor="case-domain">Kategori pajak<select id="case-domain" value={reasoningForm.topik_pajak} onChange={e => setReasoningForm(form => ({...form,topik_pajak:e.target.value as TaxDomainCode}))}>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select></label><label htmlFor="case-contributor">Kontributor / unit kerja<input required id="case-contributor" value={reasoningForm.kontributor} onChange={e => setReasoningForm(form => ({...form,kontributor:e.target.value}))} /></label></div>{([ ["pertanyaan_kasus", "Pertanyaan kasus"], ["alur_penalaran", "Penjelasan & dasar rujukan"], ["jawaban_final", "Jawaban yang diharapkan"] ] as const).map(([key,label]) => <label key={key} htmlFor={`case-${key}`}>{label}<textarea id={`case-${key}`} required rows={key === "alur_penalaran" ? 5 : 3} value={reasoningForm[key]} onChange={e => setReasoningForm(form => ({...form,[key]:e.target.value}))} /></label>)}<p className="jst-note">Contoh kasus disimpan sebagai rujukan RAG. Proses ini belum mengubah bobot model.</p><button className="jst-button jst-button-primary" disabled={busy} type="submit"><PlusIcon size={17} />{isIngesting ? "Menyimpan…" : "Simpan sumber"}</button></form>}
+              <p className="jst-note">File asli disimpan. Sumber langsung aktif setelah lolos pemeriksaan teknis dan berhasil diindeks.</p><div className="jst-form-actions"><button className="jst-button jst-button-primary" disabled={busy || !(activeStudioTab === "pdf_regulasi" ? pdfFile : excelFile)} type="submit"><PlusIcon size={17} />{isIngesting ? "Memproses sumber…" : "Unggah dan proses"}</button></div>
+            </form> : <form className="jst-form" onSubmit={handleReasoningSubmit}><div className="jst-form-row"><label htmlFor="case-domain">Kategori pajak<select id="case-domain" value={reasoningForm.topik_pajak} onChange={e => setReasoningForm(form => ({...form,topik_pajak:e.target.value as TaxDomainCode}))}>{TAX_DOMAINS.map(domain => <option key={domain}>{domain}</option>)}</select></label><label htmlFor="case-contributor">Kontributor / unit kerja<input required id="case-contributor" value={reasoningForm.kontributor} onChange={e => setReasoningForm(form => ({...form,kontributor:e.target.value}))} /></label></div>{([ ["pertanyaan_kasus", "Pertanyaan kasus"], ["alur_penalaran", "Penjelasan & dasar rujukan"], ["jawaban_final", "Jawaban yang diharapkan"] ] as const).map(([key,label]) => <label key={key} htmlFor={`case-${key}`}>{label}<textarea id={`case-${key}`} required rows={key === "alur_penalaran" ? 5 : 3} value={reasoningForm[key]} onChange={e => setReasoningForm(form => ({...form,[key]:e.target.value}))} /></label>)}<p className="jst-note">Contoh kasus langsung diindeks sebagai rujukan chatbot. Proses ini belum mengubah bobot model.</p><button className="jst-button jst-button-primary" disabled={busy} type="submit"><PlusIcon size={17} />{isIngesting ? "Menyimpan…" : "Unggah dan proses"}</button></form>}
             </div>
           </section><aside className="jst-section"><span className="jst-eyebrow">02 / CAKUPAN</span><h2 className="jst-aside-title">Sumber yang tersedia</h2>{coverageTable}<p className="jst-note jst-table-note">{vs?.total_chunks ?? "—"} potongan sumber dalam koleksi {vs?.collection || "—"}.</p></aside></div>
+          <SourceReviewPanel onReviewed={() => { void fetchTelemetry(); }} />
           <section className="jst-section"><div className="jst-section-heading"><div><span className="jst-eyebrow">ARSIP MASUK</span><h2>Sumber terbaru</h2></div><span className="jst-count">{vs?.recent_sources.length ?? "—"}</span></div>{vs?.recent_sources.length ? <div className="jst-source-list">{vs.recent_sources.map((source,i) => <div key={`${source.doc_name}-${source.ingested_at}-${i}`}><span className="jst-file-icon"><SourceIcon sourceType={source.source_type} size={23} /></span><span><strong>{source.doc_name}</strong><small>{source.domain} · {source.contributor}</small></span><time>{formatDate(source.ingested_at)}</time></div>)}</div> : <p className="jst-note">Belum ada sumber yang tercatat.</p>}</section>
         </>}
 
