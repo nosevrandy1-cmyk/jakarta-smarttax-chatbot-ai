@@ -45,7 +45,7 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(''.join(e.get("delta","") for e in events),"Jawaban model untuk pengujian.")
             self.assertEqual(events[-1]["response_source"],"ollama")
             self.assertFalse(any(e["type"]=="thinking" for e in events))
-            prompt=json.loads(Model.request["messages"][-1]["content"])
+            prompt=json.loads(Model.request["messages"][-1]["content"].split("\n",1)[1].split("\n\nPERTANYAAN TERBARU",1)[0])
             self.assertEqual(prompt["daftar_dokumen"],[])
             self.assertEqual(prompt["kutipan_tersedia"],[])
 
@@ -64,6 +64,26 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("60.000.000",request)
         self.assertNotIn("SCBD",request)
         self.assertIn("PRD bukan dasar hukum",request)
+
+    async def test_latest_question_is_only_live_user_turn(self):
+        history = [{"role":"user","content":"Apa tujuan JST-UJI-001?"},
+            {"role":"assistant","content":"Jawaban lama yang bukan bukti."},
+            {"role":"user","content":"Berapa koefisien Uji B?"}]
+        await self.events("Berapa hasil simulasi Gedung Latihan Biru?", history)
+        messages = Model.request["messages"]
+        self.assertEqual([m["role"] for m in messages], ["system", "user"])
+        self.assertTrue(messages[-1]["content"].endswith("Berapa hasil simulasi Gedung Latihan Biru?"))
+        self.assertIn("pertanyaan_lama_sudah_selesai", messages[-1]["content"])
+        self.assertNotIn("Jawaban lama yang bukan bukti", str(messages))
+
+    async def test_sequential_requests_keep_current_question_last(self):
+        history=[]
+        for question in ["Apa tujuan JST-UJI-001?", "Berapa koefisien Uji B?", "Berapa hasil simulasi gedung?", "Apakah tarif ini resmi?"]:
+            await self.events(question, history)
+            user_turns=[m for m in Model.request["messages"] if m["role"]=="user"]
+            self.assertEqual(len(user_turns),1)
+            self.assertEqual(user_turns[0]["content"].rsplit("\n",1)[-1],question)
+            history.extend([{"role":"user","content":question},{"role":"assistant","content":"jawaban selesai"}])
 
     async def test_offline_model_reports_failure_without_fabricated_answer(self):
         Model.fail=True
