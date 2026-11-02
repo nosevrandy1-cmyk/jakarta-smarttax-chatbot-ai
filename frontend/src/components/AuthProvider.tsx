@@ -6,7 +6,7 @@ import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
 import { ArrowLeftIcon } from '@phosphor-icons/react/dist/csr/ArrowLeft';
 import { API_BASE, apiFetch, setCsrfToken, flushChatHistory } from '@/lib/api';
 
-type User = { id: string; email: string; name: string; role: 'user' | 'developer' };
+type User = { local?: boolean; id: string; email: string; name: string; role: 'user' | 'developer' };
 type Session = { configured: boolean; user: User | null; csrf_token: string | null };
 type AuthContextValue = { user: User; logout: () => Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -146,13 +146,13 @@ export function AccountMenu() {
   const [error, setError] = useState('');
   return <div className="auth-account">
     <div className="auth-avatar" aria-hidden="true">{(user.name || user.email).slice(0, 1).toUpperCase()}</div>
-    <div className="auth-account-copy"><strong>{user.name || 'Akun Google'}</strong><span>{user.email}</span></div>
-    <button type="button" className="icon-btn" disabled={busy} title="Keluar akun" aria-label="Keluar akun" onClick={async () => {
+    <div className="auth-account-copy"><strong>{user.name || 'Akun Google'}</strong><span>{user.local ? 'Google Auth dinonaktifkan sementara' : user.email}</span></div>
+    {!user.local && <button type="button" className="icon-btn" disabled={busy} title="Keluar akun" aria-label="Keluar akun" onClick={async () => {
       setBusy(true); setError('');
       try { await logout(); } catch { setError('Belum bisa keluar. Coba lagi.'); setBusy(false); }
-    }}><SignOutIcon size={18} aria-hidden="true" /></button>
+    }}><SignOutIcon size={18} aria-hidden="true" /></button>}
     {user.role === 'developer' && <a className="auth-dashboard-link" href="/admin">Buka dashboard developer</a>}
-    <small>Riwayat tersimpan di akun dan tetap tersedia setelah keluar.</small>
+    <small>{user.local ? 'Riwayat mode lokal terpisah dari akun Google.' : 'Riwayat tersimpan di akun dan tetap tersedia setelah keluar.'}</small>
     {error && <small role="alert">{error}</small>}
   </div>;
 }

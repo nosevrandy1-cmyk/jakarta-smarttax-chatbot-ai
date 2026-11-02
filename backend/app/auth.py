@@ -55,6 +55,7 @@ class AuthSettings:
     developer_emails: frozenset[str]
     allowed_emails: frozenset[str]
     database: Path
+    enabled: bool = True
 
     @classmethod
     def from_env(cls):
@@ -62,7 +63,8 @@ class AuthSettings:
             os.getenv('AUTH_PUBLIC_URL', 'http://localhost:3000').rstrip('/'),
             os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8000/api/auth/google/callback').strip(),
             emails(os.getenv('AUTH_DEVELOPER_EMAILS', '')), emails(os.getenv('AUTH_ALLOWED_EMAILS', '')),
-            Path(__file__).resolve().parent.parent / 'data' / 'auth.sqlite')
+            Path(__file__).resolve().parent.parent / 'data' / 'auth.sqlite',
+            os.getenv('AUTH_ENABLED', 'true').strip().lower() not in {'false','0','no'})
 
     @property
     def secure(self):
@@ -89,6 +91,8 @@ class AuthSettings:
         return not self.allowed_emails or (authoritative and email.casefold() in self.allowed_emails | self.developer_emails)
 
     def is_developer(self, session):
+        if not self.enabled and session.get('local_developer'):
+            return True
         return bool(session.get('google_authoritative')) and session['email'].casefold() in self.developer_emails
 
 
@@ -337,9 +341,43 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
     public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/register','GET'),('/api/auth/google/callback','GET')}
     chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT')}
 
+    local_user = {'id':'jst-local-development', 'email':'', 'name':'Pengembangan lokal',
+                  'google_authoritative':False, 'local_developer':True}
+    local_csrf = secrets.token_urlsafe(32)
+    if not settings.enabled:
+        if urlparse(settings.public_url).hostname not in {'localhost','127.0.0.1','::1'}:
+            raise RuntimeError('AUTH_ENABLED=false hanya tersedia untuk pengembangan localhost.')
+        now = int(time.time())
+        with store.connect() as db:
+            db.execute("INSERT OR IGNORE INTO auth_users(id,provider,subject,email,name,created_at,updated_at,google_authoritative) VALUES(?,?,?,?,?,?,?,?)",
+                (local_user['id'],'local','development','',local_user['name'],now,now,0))
+
     @app.middleware('http')
     async def authenticate(request: Request, call_next):
         path = request.url.path
+        if not settings.enabled and (path.startswith('/api/') or path in {'/docs','/redoc','/openapi.json'}):
+            peer = request.client.host if request.client else ''
+            if peer not in {'127.0.0.1','::1','localhost'} or request.url.hostname not in {'127.0.0.1','::1','localhost'}:
+                return auth_json({'detail':'Mode tanpa login hanya tersedia di localhost.'},status_code=403)
+            if request.method == 'OPTIONS':
+                return await call_next(request)
+            if path.startswith('/api/auth/google/'):
+                return auth_json({'detail':'Google Auth sedang dinonaktifkan sementara.'},status_code=403)
+            if path == '/api/auth/session' and request.method == 'GET':
+                return auth_json({'configured':False, 'auth_enabled':False,
+                    'user':{**{k:local_user[k] for k in ['id','email','name']},'role':'developer','local':True},
+                    'csrf_token':local_csrf})
+            if request.method not in {'GET','HEAD'}:
+                csrf=request.headers.get('x-csrf-token','')
+                if request.headers.get('origin') != settings.public_url or not csrf.isascii() or not hmac.compare_digest(csrf,local_csrf):
+                    return auth_json({'detail':'Permintaan tidak valid. Muat ulang halaman.'},status_code=403)
+            limit=10 if path in {'/api/chat','/api/chat/stream'} else 120
+            if not store.rate_limit('local:' + ('chat' if limit==10 else 'api'),limit):
+                return auth_json({'detail':'Terlalu banyak permintaan. Coba lagi sebentar.'},status_code=429)
+            request.state.auth_user=local_user
+            response=await call_next(request)
+            response.headers['Cache-Control']='no-store'
+            return response
         if path == '/api/auth/google/callback':
             request.state.oauth_query = dict(request.query_params)
             request.scope['query_string'] = b''  # Keep codes/state out of access logs.
