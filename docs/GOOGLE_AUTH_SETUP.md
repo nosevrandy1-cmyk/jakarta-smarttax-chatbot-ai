@@ -125,3 +125,14 @@ CORS hanya mengizinkan `AUTH_PUBLIC_URL`. Pada HTTPS, cookie menggunakan awalan 
 - Delapan tes baru menambah suite menjadi 61 tes backend; TypeScript dan build frontend lolos. Pengujian Google nyata untuk jalur baru masih perlu dilakukan pengguna.
 
 Rincian: [Pemisahan pendaftaran dan login](GOOGLE_AUTH_REGISTRATION_2026-10-29.md).
+
+
+## Temporary localhost development without Google login
+
+Set `AUTH_ENABLED=false` in the existing backend `.env`, then restart/reload the backend and refresh the frontend. Do not overwrite the existing `.env`. The default and `.env.example` keep `AUTH_ENABLED=true`.
+
+Disabled mode provides a local developer identity for chatbot, dashboard and source ingestion. Its history is stored separately from Google account history. All local-mode browser sessions share this development identity; per-Google-account history isolation resumes when login is restored. Existing Google accounts, sessions and history are not deleted. Logout is hidden in local mode.
+
+Mutations still require the existing Origin and CSRF checks. Body limits and rate limits remain active. Local mode requires a localhost frontend configuration and rejects non-loopback client addresses or non-local request hosts; it is not intended for Cloudflare/public access. Google OAuth entry points are unavailable while disabled.
+
+To restore Google authentication, set `AUTH_ENABLED=true`, restart/reload the backend and refresh the browser. Validation: 95 backend tests and TypeScript noUnusedLocals passed; the running local session endpoint confirmed `auth_enabled=false` and a local user.
