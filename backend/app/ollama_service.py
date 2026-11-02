@@ -7,7 +7,7 @@ import httpx
 from .config import (DEFAULT_CHAT_MODEL, DEEPSEEK_DRAFTING_MODEL, OLLAMA_LOCAL_URL,
     OLLAMA_SECONDARY_URL, OLLAMA_CLOUD_URL, OLLAMA_API_KEY, OLLAMA_TIMEOUT,
     OLLAMA_NUM_CTX, OLLAMA_TEMPERATURE, OLLAMA_TOP_P, OLLAMA_TOP_K, OLLAMA_THINK)
-from .rag_ingestion import chroma_store
+from .rag_ingestion import knowledge_store
 from .tax_db import TAX_THEMES
 
 logger = logging.getLogger(__name__)
@@ -124,8 +124,8 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
     yield event("status", text="Membaca sumber yang tersedia…")
     # Only the active upload collection is eligible. Legacy SQL/Qdrant fixtures
     # and assistant messages from older conversations never become evidence.
-    hits = chroma_store.query_knowledge(user_message, top_k=6)
-    available = chroma_store.get_collection_telemetry()
+    hits = knowledge_store.query_knowledge(user_message, top_k=6)
+    available = knowledge_store.get_collection_telemetry()
     sources = available["recent_sources"]
     inventory = [{"nama": item["doc_name"], "jenis": item["source_type"],
                   "kategori": item["domain"]} for item in sources]
@@ -140,7 +140,7 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
         context.append({"referensi": f"[{number}]", "dokumen": hit.doc_name, "isi": hit.text})
     yield event("sources", tema_pajak=tema, mode_kapabilitas=mode,
         mode_label=CAPABILITY_MODES[mode]["label"], suggested_theme=None,
-        qdrant_sources=[], sql_tools_used=[], chroma_sources=[hit.model_dump() for hit in hits])
+        sql_tools_used=[], qdrant_sources=[hit.model_dump() for hit in hits])
     messages = build_chat_messages(user_message, history, inventory, context,
         available["total_chunks"], tema, mode)
     selected = model or DEFAULT_CHAT_MODEL

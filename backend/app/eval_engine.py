@@ -19,7 +19,7 @@ from .config import (
     OLLAMA_TOP_P,
 )
 from .embedder import embedder
-from .rag_ingestion import RetrievalResult, chroma_store
+from .rag_ingestion import RetrievalResult, knowledge_store
 
 
 def _classify_status(score_pct: float) -> str:
@@ -68,7 +68,7 @@ def _compute_faithfulness(answer: str, chunks: List[RetrievalResult]) -> float:
 def _synthesize_grounded_answer(item: Dict[str, Any], chunks: List[RetrievalResult]) -> str:
     if not chunks:
         return (
-            f"Belum ditemukan dokumen referensi lokal pada ChromaDB untuk domain {item.get('domain', 'PBB-P2')}."
+            f"Belum ditemukan dokumen referensi lokal pada Qdrant untuk domain {item.get('domain', 'PBB-P2')}."
         )
 
     extracted_segments: List[str] = []
@@ -105,7 +105,7 @@ async def _try_ollama_eval_answer(
         "Jawab pertanyaan secara ringkas, padat, dan 100% mengutip angka tarif, batas tidak kena pajak, "
         "rumus, serta dasar hukum dari konteks yang diberikan tanpa mengarang."
     )
-    user_prompt = f"KONTEKS CHROMADB:\n{context_text}\n\nPERTANYAAN:\n{question}"
+    user_prompt = f"KONTEKS QDRANT:\n{context_text}\n\nPERTANYAAN:\n{question}"
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.post(
@@ -173,7 +173,7 @@ class SmartTaxEvaluationEngine:
                 "golden_items": questions, "reason": reason}
 
     def _source_count(self) -> int:
-        return int(chroma_store.get_collection_telemetry()["total_chunks"])
+        return int(knowledge_store.get_collection_telemetry()["total_chunks"])
 
     def _require_evaluation_data(self) -> None:
         readiness = self.evaluation_readiness()
@@ -194,7 +194,7 @@ class SmartTaxEvaluationEngine:
         live_answers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         self._require_evaluation_data()
-        telemetry = chroma_store.get_collection_telemetry()
+        telemetry = knowledge_store.get_collection_telemetry()
         golden_items = self.load_golden_dataset()
 
         prev_item_map: Dict[str, Dict[str, Any]] = {}
@@ -202,8 +202,8 @@ class SmartTaxEvaluationEngine:
             for pi in previous_snapshot["items"]:
                 prev_item_map[str(pi.get("id"))] = pi
 
-        source_meta = ingested_source_meta or chroma_store.last_ingested_source or {
-            "doc_name": "Korpus Pengetahuan ChromaDB DKI",
+        source_meta = ingested_source_meta or knowledge_store.last_ingested_source or {
+            "doc_name": "Korpus Pengetahuan Qdrant DKI",
             "source_type": "pdf_regulasi",
             "contributor": "Auditor Bapenda DKI",
             "domain": "PBB-P2",
@@ -217,8 +217,8 @@ class SmartTaxEvaluationEngine:
             ground_truth = item["kunci_jawaban"]
             req_kws = item.get("kata_kunci_wajib", [])
 
-            domain_chunks = chroma_store.query_knowledge(question, top_k=3, domain=dom)
-            global_chunks = chroma_store.query_knowledge(question, top_k=3)
+            domain_chunks = knowledge_store.query_knowledge(question, top_k=3, domain=dom)
+            global_chunks = knowledge_store.query_knowledge(question, top_k=3)
 
             seen_ids = set()
             merged_chunks: List[RetrievalResult] = []
@@ -384,7 +384,7 @@ class SmartTaxEvaluationEngine:
         if use_live_llm:
             golden_items = self.load_golden_dataset()
             for item in golden_items:
-                chunks = chroma_store.query_knowledge(
+                chunks = knowledge_store.query_knowledge(
                     item["pertanyaan"], top_k=3, domain=item["domain"]
                 )
                 ans = await _try_ollama_eval_answer(
@@ -406,7 +406,7 @@ class SmartTaxEvaluationEngine:
     async def get_dashboard_state(self) -> Dict[str, Any]:
         history = self.load_history()
         latest = history[-1] if history else None
-        telemetry = chroma_store.get_collection_telemetry()
+        telemetry = knowledge_store.get_collection_telemetry()
 
         ollama_online = False
         installed_models: List[str] = []

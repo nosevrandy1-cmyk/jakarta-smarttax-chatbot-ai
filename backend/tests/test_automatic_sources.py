@@ -8,7 +8,7 @@ from app.embedder import embedder
 class AutomaticSourceTests(unittest.TestCase):
     def setUp(self):
         fixtures.EmptyDashboardTests.setUp(self)
-        self.store=fixtures.chroma_store
+        self.store=fixtures.knowledge_store
 
     def test_success_is_active_and_records_uploader(self):
         result=self.store.ingest_pdf(make_pdf('AUTO TRUSTED SOURCE'), 'automatic.pdf')

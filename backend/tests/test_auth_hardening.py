@@ -126,11 +126,11 @@ class AuthHardeningTests(unittest.TestCase):
                 self.assertEqual((await client.get('/api/rag/telemetry')).status_code,401)
         asyncio.run(check())
 
-    def test_raw_chroma_routes_are_not_exposed_by_application(self):
+    def test_raw_vector_database_routes_are_not_exposed_by_application(self):
         token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
-            self.assertEqual((await client.get('/api/v2/tenants/default_tenant/databases/default_database/collections')).status_code,404)
+            self.assertEqual((await client.get('/api/collections')).status_code,404)
         self.run_async(check)
 
 

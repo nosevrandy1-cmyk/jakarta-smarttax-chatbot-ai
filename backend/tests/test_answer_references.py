@@ -40,7 +40,7 @@ class AnswerReferenceTests(unittest.IsolatedAsyncioTestCase):
         store=SimpleNamespace(query_knowledge=lambda *a,**k:[hit],get_collection_telemetry=lambda:
             {'total_chunks':1,'recent_sources':[{'doc_name':'PRD.pdf','source_type':'pdf_regulasi','domain':'PBB-P2'}]})
         def respond(*args,**kwargs):return Reply('Login direncanakan memakai Google [1]. Tidak sah [8].')
-        with patch.object(chat,'chroma_store',store),patch.object(chat.httpx,'AsyncClient',Model),patch.object(Model,'stream',respond):
+        with patch.object(chat,'knowledge_store',store),patch.object(chat.httpx,'AsyncClient',Model),patch.object(Model,'stream',respond):
             result=await chat.run_smarttax_chat('Bagaimana login?',[])
         self.assertNotIn('[8]',result['answer'])
         self.assertEqual(len(result['references']),1)

@@ -43,3 +43,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Embedded Qdrant knowledge index (runtime data)
+backend/qdrant_knowledge_storage/

@@ -36,7 +36,7 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
             get_collection_telemetry=lambda:{"recent_sources":[],"total_chunks":0})
 
     async def events(self, question, history=None):
-        with patch.object(chat,"chroma_store",self.store), patch.object(chat.httpx,"AsyncClient",Model):
+        with patch.object(chat,"knowledge_store",self.store), patch.object(chat.httpx,"AsyncClient",Model):
             return [json.loads(line) async for line in chat.stream_smarttax_chat(question,history or [])]
 
     async def test_greeting_and_tax_questions_use_model_not_templates(self):

@@ -24,7 +24,7 @@ from .ollama_service import (
 )
 from .rag_ingestion import (
     LearnReasoningPayload,
-    chroma_store,
+    knowledge_store,
 )
 from .tax_db import (
     TAX_THEMES,
@@ -33,7 +33,6 @@ from .tax_db import (
     get_regulasi_chunks,
     init_tax_db,
 )
-from .vector_store import vector_store
 
 from .auth import install_auth
 from .chat_history import install_history
@@ -46,24 +45,23 @@ MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 async def lifespan(app: FastAPI):
     get_all_sppt_records()
     get_all_legal_corpus()
-    vector_store.reindex_all()
     eval_engine.load_history()
     try:
         yield
     finally:
-        vector_store.client.close()
+        knowledge_store.client.close()
 
 
 app = FastAPI(
     title="Jakarta SmartTax 2026 API — Tim AI Jakarta SmartTax",
-    description="Strictly grounded local RAG, ChromaDB multi-source ingestion, and AI Intelligence Audit Engine (Gemma 4 12B on Ollama).",
+    description="Strictly grounded local RAG, Qdrant multi-source ingestion, and AI Intelligence Audit Engine (Gemma 4 12B on Ollama).",
     version="2.4.0",
     lifespan=lifespan,
 )
 
 install_auth_settings, _auth_store = install_auth(app)
 install_history(app, _auth_store)
-install_source_routes(app, chroma_store, embedder)
+install_source_routes(app, knowledge_store, embedder)
 
 app.add_middleware(
     CORSMiddleware,
@@ -124,7 +122,7 @@ async def health_check(request: Request) -> Dict[str, Any]:
     sppt_rows = get_all_sppt_records()
     reg_chunks = get_regulasi_chunks()
     legal_rows = get_all_legal_corpus()
-    chroma_telemetry = chroma_store.get_collection_telemetry()
+    knowledge_telemetry = knowledge_store.get_collection_telemetry()
 
     return {
         "status": "ok",
@@ -142,18 +140,12 @@ async def health_check(request: Request) -> Dict[str, Any]:
             "profiles": OLLAMA_MODEL_PROFILES,
             "installed_local_models": local_models,
         },
-        "chromadb": {
-            "collection": chroma_telemetry["collection"],
-            "total_chunks": chroma_telemetry["total_chunks"],
-            "domain_coverage_percentage": chroma_telemetry["domain_coverage_percentage"],
-            "by_source_type": chroma_telemetry["by_source_type"],
-        },
         "qdrant": {
-            "mode": vector_store.mode,
-            "collection": vector_store.collection_name,
-            "records_indexed": len(sppt_rows),
-            "regulasi_chunks": len(reg_chunks),
-            "pasal_hukum_indexed": len(legal_rows),
+            "mode": knowledge_store.mode,
+            "collection": knowledge_telemetry["collection"],
+            "total_chunks": knowledge_telemetry["total_chunks"],
+            "domain_coverage_percentage": knowledge_telemetry["domain_coverage_percentage"],
+            "by_source_type": knowledge_telemetry["by_source_type"],
         },
         "embedder": {
             "engine": embedder.engine_name,
@@ -176,9 +168,9 @@ async def get_korpus_hukum_endpoint(tema_pajak: Optional[str] = None) -> Dict[st
 @app.post("/api/reindex")
 async def reindex_endpoint() -> Dict[str, Any]:
     init_tax_db()
-    stats = vector_store.reindex_all()
-    chroma_stats = chroma_store.get_collection_telemetry()
-    return {"status": "reindexed", **stats, "chromadb": chroma_stats}
+    stats = knowledge_store.reindex_active_sources()
+    knowledge_stats = knowledge_store.get_collection_telemetry()
+    return {"status": "reindexed", **stats, "qdrant": knowledge_stats}
 
 
 @app.get("/api/rag/telemetry")
@@ -193,7 +185,7 @@ async def get_source_chunks_endpoint(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> Dict[str, Any]:
-    return chroma_store.get_chunk_details(source_id=source_id, query=q, offset=offset, limit=limit)
+    return knowledge_store.get_chunk_details(source_id=source_id, query=q, offset=offset, limit=limit)
 
 
 @app.get("/api/rag/golden-dataset")
@@ -225,14 +217,14 @@ async def run_benchmark_evaluation_endpoint(
 
 def activate_uploaded_source(summary, request):
     try:
-        chroma_store.archive.activate(summary['source_id'], request.state.auth_user['id'],
-                                      chroma_store.collection, embedder)
+        knowledge_store.archive.activate(summary['source_id'], request.state.auth_user['id'],
+                                      knowledge_store.collection, embedder)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
     except Exception:
         raise HTTPException(503, "Pengindeksan belum berhasil. Sumber belum aktif; coba proses ulang.") from None
     return {**summary, 'review_status': 'approved', 'activation_mode': 'automatic',
-            'total_collection_chunks': chroma_store.get_collection_telemetry()['total_chunks']}
+            'total_collection_chunks': knowledge_store.get_collection_telemetry()['total_chunks']}
 
 
 @app.post("/api/rag/ingest-pdf")
@@ -260,7 +252,7 @@ async def ingest_pdf_endpoint(
         )
 
     try:
-        summary = chroma_store.ingest_pdf(
+        summary = knowledge_store.ingest_pdf(
             file_bytes=file_bytes,
             filename=raw_name,
             domain=domain,
@@ -303,7 +295,7 @@ async def ingest_excel_endpoint(
         )
 
     try:
-        summary = chroma_store.ingest_excel(
+        summary = knowledge_store.ingest_excel(
             file_bytes=file_bytes,
             filename=raw_name,
             category=category,
@@ -325,7 +317,7 @@ async def ingest_excel_endpoint(
 
 @app.post("/api/rag/learn-reasoning")
 async def learn_reasoning_endpoint(payload: LearnReasoningPayload, request: Request) -> Dict[str, Any]:
-    summary = chroma_store.ingest_user_reasoning(payload)
+    summary = knowledge_store.ingest_user_reasoning(payload)
     summary = activate_uploaded_source(summary, request)
     snapshot = None
     dashboard = await eval_engine.get_dashboard_state()

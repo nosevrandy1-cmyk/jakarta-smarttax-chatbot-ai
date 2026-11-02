@@ -4,12 +4,10 @@ Perbaikan diverifikasi pada 29 Oktober 2026 dengan Python 3.12.10 dari instalasi
 
 ## Konfigurasi hanya pada setup pertama
 
-Setelah clone baru, buat `.env` hanya jika belum ada. Dari folder backend:
+Hanya setelah clone baru dan jika `.env` belum ada, jalankan dari folder backend. Lewati langkah ini jika file sudah tersedia:
 
 ```powershell
-if (-not (Test-Path -LiteralPath '.env')) {
-    Copy-Item -LiteralPath '.env.example' -Destination '.env'
-}
+Copy-Item .env.example .env
 ```
 
 Sesuaikan konfigurasi lokal setelah dibuat. Jangan menjalankan penyalinan ulang
@@ -51,7 +49,7 @@ DLL Pandas/PyMuPDF dan runtime Python sebelumnya ditolak oleh kebijakan Windows 
 ## Pemeriksaan
 
 ```powershell
-uv run --locked python -c "import ctypes, pandas, numpy, pypdf, chromadb; print('Imports OK')"
+uv run --locked python -c "import ctypes, pandas, numpy, pypdf, qdrant_client; print('Imports OK')"
 uv run --locked python -m unittest discover -s tests -v
 Invoke-RestMethod http://127.0.0.1:8000/api/auth/session
 ```

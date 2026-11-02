@@ -13,10 +13,8 @@ def backend_path(raw_path):
 
 
 DATA_DIR = BASE_DIR / "data"
-QDRANT_STORAGE_DIR = BASE_DIR / "qdrant_storage"
-CHROMA_STORAGE_DIR = backend_path(
-    os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "smarttax_vectordb")))
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge_official")
+QDRANT_STORAGE_DIR = backend_path(os.getenv("QDRANT_STORAGE_DIR", str(BASE_DIR / "qdrant_knowledge_storage")))
+QDRANT_KNOWLEDGE_COLLECTION = os.getenv("QDRANT_KNOWLEDGE_COLLECTION", "jakarta_smarttax_knowledge")
 
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
 INTELLIGENCE_HISTORY_PATH = BASE_DIR / "dashboard_intelligence_history.json"
@@ -71,7 +69,7 @@ OLLAMA_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
 }
 
 QDRANT_URL = os.getenv("QDRANT_URL", "").strip()
-QDRANT_COLLECTION = os.getenv("QDRANT_ACTIVE_COLLECTION", "jakarta_smarttax_sources")
+
 
 TRANSFORMERS_MODEL_NAME = os.getenv(
     "TRANSFORMERS_MODEL_NAME",

@@ -1,6 +1,6 @@
 """Run alone: python -m unittest discover -s tests -p test_dashboard_empty.py -v.
 
-All database writes use a new temporary Chroma directory and temporary JSON
+All database writes use a new temporary Qdrant directory and temporary JSON
 files. Nothing is inserted into the application's active data collection.
 """
 import asyncio
@@ -12,22 +12,23 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 TEST_ROOT = Path(tempfile.mkdtemp(prefix="jst-dashboard-test-"))
-os.environ["CHROMA_PERSIST_DIR"] = str(TEST_ROOT / "chroma")
-os.environ["CHROMA_COLLECTION"] = "jst_dashboard_test"
+os.environ["QDRANT_STORAGE_DIR"] = str(TEST_ROOT / "qdrant")
+os.environ["QDRANT_KNOWLEDGE_COLLECTION"] = "jst_dashboard_test"
+os.environ["QDRANT_URL"] = ""  # Tests never connect to an external Qdrant server.
 os.environ["JST_UPLOAD_DIR"] = str(TEST_ROOT / "uploads")
 
 from app import config
 from app.eval_engine import SmartTaxEvaluationEngine
-from app.rag_ingestion import SmartTaxChromaStore, chroma_store
+from app.rag_ingestion import SmartTaxKnowledgeStore, knowledge_store
 
 
 class EmptyDashboardTests(unittest.TestCase):
     def setUp(self):
-        self.assertEqual(config.CHROMA_STORAGE_DIR, (TEST_ROOT / "chroma").resolve())
-        identifiers = chroma_store.collection.get()["ids"]
+        self.assertEqual(config.QDRANT_STORAGE_DIR, (TEST_ROOT / "qdrant").resolve())
+        identifiers = knowledge_store.collection.get()["ids"]
         if identifiers:
-            chroma_store.collection.delete(ids=identifiers)
-        chroma_store.last_ingested_source = None
+            knowledge_store.collection.delete(ids=identifiers)
+        knowledge_store.last_ingested_source = None
         self.directory = TEST_ROOT / self._testMethodName
         self.directory.mkdir()
         self.engine = SmartTaxEvaluationEngine()
@@ -37,21 +38,21 @@ class EmptyDashboardTests(unittest.TestCase):
         self.engine.golden_path.write_text("[]", encoding="utf-8")
 
     def add_source(self):
-        result = chroma_store.ingest_excel(
+        result = knowledge_store.ingest_excel(
             b"kategori,keterangan\nPBB-P2,rujukan pengujian terisolasi\n",
             "test_only.csv", "PBB-P2", "Test runner",
         )
-        chroma_store.archive.review(result["source_id"], "approve", "test-reviewer", "Test only", chroma_store.collection, __import__("app.embedder", fromlist=["embedder"]).embedder)
+        knowledge_store.archive.review(result["source_id"], "approve", "test-reviewer", "Test only", knowledge_store.collection, __import__("app.embedder", fromlist=["embedder"]).embedder)
         return result
 
     def test_reads_and_queries_do_not_seed_empty_collection(self):
         for _ in range(2):
-            telemetry = chroma_store.get_collection_telemetry()
+            telemetry = knowledge_store.get_collection_telemetry()
             self.assertEqual(telemetry["total_chunks"], 0)
             self.assertEqual(telemetry["covered_slots"], 0)
             self.assertEqual(telemetry["recent_sources"], [])
-            self.assertEqual(chroma_store.query_knowledge("test pajak"), [])
-        self.assertEqual(chroma_store.collection.count(), 0)
+            self.assertEqual(knowledge_store.query_knowledge("test pajak"), [])
+        self.assertEqual(knowledge_store.collection.count(), 0)
 
     def test_empty_primary_history_does_not_restore_old_mirror(self):
         self.engine.history_path.write_text("[]", encoding="utf-8")
@@ -84,7 +85,7 @@ class EmptyDashboardTests(unittest.TestCase):
     def test_user_source_can_be_ingested_without_dataset(self):
         result = self.add_source()
         self.assertEqual(result["rows_ingested"], 1)
-        telemetry = chroma_store.get_collection_telemetry()
+        telemetry = knowledge_store.get_collection_telemetry()
         self.assertEqual(telemetry["total_chunks"], 1)
         self.assertEqual(telemetry["recent_sources"][0]["doc_name"], "test_only.csv")
         self.assertFalse(self.engine.evaluation_readiness()["ready"])
@@ -104,7 +105,7 @@ class EmptyDashboardTests(unittest.TestCase):
         self.assertEqual(history[0]["total_chunks_indexed"], 1)
 
     def test_reopening_store_does_not_seed(self):
-        reopened = SmartTaxChromaStore()
+        reopened = SmartTaxKnowledgeStore()
         self.assertEqual(reopened.collection.count(), 0)
         self.assertEqual(reopened.get_collection_telemetry()["total_chunks"], 0)
 
