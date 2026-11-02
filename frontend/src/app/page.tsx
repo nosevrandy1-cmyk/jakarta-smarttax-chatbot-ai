@@ -467,7 +467,7 @@ export default function TaxAssistantView() {
     return () => controller.abort();
   }, []);
 
-  const [capabilityMode, setCapabilityMode] =
+  const [capabilityMode] =
     useState<CapabilityModeCode>("konsultasi");
   const [themeMenuOpen, setThemeMenuOpen] = useState<boolean>(false);
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
@@ -1250,48 +1250,6 @@ export default function TaxAssistantView() {
                     >
                       <ThemeIcon code={code} color={t.iconColor} />
                       <span>{t.shortLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                style={{
-                  display: "inline-flex",
-                  flexWrap: "wrap",
-                  justifyContent: "center",
-                  gap: "6px",
-                  padding: "4px",
-                  borderRadius: "999px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  marginBottom: "18px",
-                }}
-              >
-                {CAPABILITY_MODES.map((mode) => {
-                  const isActive = capabilityMode === mode.code;
-                  return (
-                    <button
-                      key={mode.code}
-                      type="button"
-                      onClick={() => {
-                        setCapabilityMode(mode.code);
-                      }}
-                      style={{
-                        border: "none",
-                        borderRadius: "999px",
-                        padding: "6px 13px",
-                        fontSize: "12.5px",
-                        fontWeight: isActive ? 600 : 400,
-                        background: isActive
-                          ? "rgba(255,255,255,0.13)"
-                          : "transparent",
-                        color: isActive ? "#ffffff" : "#9ca3af",
-                        cursor: "pointer",
-                        transition: "all 0.16s ease",
-                      }}
-                    >
-                      {mode.shortLabel}
                     </button>
                   );
                 })}
