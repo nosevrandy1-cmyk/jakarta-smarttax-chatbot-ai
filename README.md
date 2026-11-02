@@ -1,4 +1,5 @@
-# Jakarta SmartTax 2026 — Platform AI Chatbot Pajak Daerah DKI Jakarta
+# Jakarta SmartTax 2026
+Platform AI Chatbot Pajak Daerah DKI Jakarta
 
 Repositori resmi **Tim AI Jakarta SmartTax 2026**. Proyek ini adalah platform *chat* interaktif berbasis RAG (*Retrieval-Augmented Generation*) untuk seluruh kategori pajak daerah **Bapenda Provinsi DKI Jakarta**:
 
