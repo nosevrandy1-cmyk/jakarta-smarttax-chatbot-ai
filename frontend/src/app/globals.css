@@ -1352,3 +1352,5 @@ details[open] > .thinking-summary .thinking-caret {
 .app-layout[data-chat-theme="light"] .cmd-dialog, .app-layout[data-chat-theme="light"] .theme-up-dropdown { box-shadow:0 16px 40px #0000001a; }
 .app-layout[data-chat-theme="light"] .shimmer-status { background-image:linear-gradient(90deg,#686868,#262626,#686868); }
 @media(max-width:680px) { .chat-appearance-toggle { width:36px; height:36px; } }
+
+.app-layout .chat-inline-citation{color:var(--chat-accent);font-weight:500}

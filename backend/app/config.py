@@ -7,16 +7,20 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=False)
 
+def backend_path(raw_path):
+    path = Path(raw_path).expanduser()
+    return (path if path.is_absolute() else BASE_DIR / path).resolve()
+
+
 DATA_DIR = BASE_DIR / "data"
 QDRANT_STORAGE_DIR = BASE_DIR / "qdrant_storage"
-CHROMA_STORAGE_DIR = Path(
-    os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "smarttax_vectordb"))
-).resolve()
+CHROMA_STORAGE_DIR = backend_path(
+    os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "smarttax_vectordb")))
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge_official")
 
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
 INTELLIGENCE_HISTORY_PATH = BASE_DIR / "dashboard_intelligence_history.json"
-UPLOAD_STAGING_DIR = Path(os.getenv("JST_UPLOAD_DIR", str(DATA_DIR / "uploads"))).resolve()
+UPLOAD_STAGING_DIR = backend_path(os.getenv("JST_UPLOAD_DIR", str(DATA_DIR / "uploads")))
 
 OLLAMA_LOCAL_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_SECONDARY_URL = os.getenv("OLLAMA_SECONDARY_HOST", OLLAMA_LOCAL_URL).rstrip("/")

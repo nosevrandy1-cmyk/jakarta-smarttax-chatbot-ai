@@ -23,3 +23,7 @@ A live six-question sequence using local gemma4:12b and the uploaded three-page 
 All six responses addressed their current question in this run: document purpose (page 1), Uji B coefficient and conditions (page 2), Gedung Latihan Biru calculation (page 3), fictional/non-official status, unavailable Uji D information, and correction of the Uji A deduction assumption (page 2). The previous one-question lag did not appear. This is one successful sequence, not a guarantee across all prompts.
 
 Some answers still emitted grouped citation markers such as [1, 2]; the current resolver supports individual markers and therefore does not resolve every grouped marker. Citation formatting remains a separate follow-up; the directly cited core-answer references were present in this run.
+
+## Subsequent update
+
+Grouped citation resolution is now supported without splitting valid groups, with blue inline markers. See DATABASE_PATHS_AND_CITATIONS_2026-10-30.md. The earlier observation above describes the pre-fix test run.

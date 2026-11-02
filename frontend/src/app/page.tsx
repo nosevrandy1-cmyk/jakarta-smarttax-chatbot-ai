@@ -171,12 +171,12 @@ function renderInline(
   text: string,
   onCopyCode?: (codeText: string) => void
 ): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\[\d+(?:\s*,\s*\d+)*\])/g);
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={i} style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-          {part.slice(2, -2)}
+          {renderInline(part.slice(2, -2), onCopyCode)}
         </strong>
       );
     }
@@ -192,6 +192,9 @@ function renderInline(
           {cleanCode}
         </code>
       );
+    }
+    if (/^\[\d+(?:\s*,\s*\d+)*\]$/.test(part)) {
+      return <span key={i} className="chat-inline-citation">{part}</span>;
     }
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });

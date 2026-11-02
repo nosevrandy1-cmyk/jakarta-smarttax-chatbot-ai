@@ -100,13 +100,16 @@ def resolve_answer_references(answer: str, candidates: List[Dict[str, Any]]) -> 
     allowed = {str(item["number"]): item for item in candidates}
     used = []
     def marker(match: Any) -> str:
-        number = match.group(1)
-        if number not in allowed:
+        numbers = re.findall(r"\d+", match.group(1))
+        valid = [number for number in numbers if number in allowed]
+        for number in valid:
+            if number not in used:
+                used.append(number)
+        if not valid:
             return ""
-        if number not in used:
-            used.append(number)
-        return match.group(0)
-    cleaned = re.sub(r"\[(\d+)\]", marker, answer)
+        # Preserve valid grouped markers instead of splitting them into separate citations.
+        return match.group(0) if len(valid) == len(numbers) else "[" + ", ".join(valid) + "]"
+    cleaned = re.sub(r"\[(\d+(?:\s*,\s*\d+)*)\]", marker, answer)
     return cleaned, [allowed[number] for number in used]
 
 

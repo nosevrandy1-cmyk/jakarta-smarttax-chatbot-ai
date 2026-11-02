@@ -23,6 +23,17 @@ class AnswerReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refs,[])
         self.assertNotIn('[1]',answer)
 
+    def test_grouped_markers_are_preserved_and_resolved(self):
+        answer, refs = chat.resolve_answer_references('Klaim [1, 2]. Lainnya [2,3].',
+            [{'number':1},{'number':2},{'number':3}])
+        self.assertEqual(answer, 'Klaim [1, 2]. Lainnya [2,3].')
+        self.assertEqual([r['number'] for r in refs],[1,2,3])
+
+    def test_grouped_unknown_ids_are_removed_without_losing_valid_sources(self):
+        answer, refs = chat.resolve_answer_references('Klaim [99, 2]. Tidak sah [98, 99]. Ulang [2, 2].', [{'number':2}])
+        self.assertEqual(answer,'Klaim [2]. Tidak sah . Ulang [2, 2].')
+        self.assertEqual(len(refs),1)
+
     async def test_stream_and_json_response_resolve_same_real_source(self):
         hit=SimpleNamespace(doc_name='PRD.pdf',text='Login menggunakan Google.',chunk_id='pdf-test-0001',
             source_type='pdf_regulasi',metadata={'chunk_index':1},model_dump=lambda:{'doc_name':'PRD.pdf'})
