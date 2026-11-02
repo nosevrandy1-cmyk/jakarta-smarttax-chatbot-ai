@@ -34,13 +34,18 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 - **Database Relasional (SQLite 3 — `pajak_dki.sqlite`):**
   - Tabel `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai DPP/NJOP, pokok pajak, denda, dan status pembayaran.
   - Tabel `korpus_hukum_dki`: Menyimpan struktur pasal, ayat, bab/bagian, bunyi norma hukum, dan kaidah perumusan (*legal drafting*) untuk tiap kategori pajak.
-- **Vector Database (Qdrant — `jakarta_smarttax_kb`):** Menyimpan indeks vektor berdimensi `384` untuk pencarian semantik yang difilter ketat berdasarkan `tema_pajak` dan `doc_type` (`objek_pajak`, `regulasi`, `pasal_hukum`).
-- **Embedding Engine (`backend/app/embedder.py`):** Mendukung model lokal (`bge-m3` / HuggingFace `transformers`) dengan *fallback* deterministik 384-dimensi untuk lingkungan *offline*.
+- **Vector Database (Qdrant):** Indeks aktif untuk PDF, tabel Excel/CSV, dan contoh kasus. Mode default embedded lokal di `backend/qdrant_knowledge_storage`, collection `jakarta_smarttax_knowledge`, cosine similarity dengan vektor hashing aplikasi. File asli dan metadata status tetap di arsip sumber SQLite. Startup tidak menghapus atau membangun ulang indeks secara otomatis.
 
-### 4. AI / LLM Runtime (Ollama — Gemma & DeepSeek)
-- **Gemma (`gemma4:12b`):** Digunakan sebagai mesin utama untuk RAG cepat pada konsultasi tarif, rumus perhitungan, dan pengecekan data objek pajak.
-- **Model drafting (`OLLAMA_DRAFTING_MODEL`):** Secara default memakai `gemma4:12b` juga. Bisa diganti menjadi `deepseek-r1:8b` jika model tersebut sudah tersedia untuk perumusan dasar hukum baru (*legal drafting*). Mendukung pembagian beban paralel 2 PC di jaringan LAN (`OLLAMA_HOST` & `OLLAMA_SECONDARY_HOST`).
-- **Deterministic Grounded Fallback:** Jika layanan Ollama di mesin lokal belum aktif, backend otomatis menyajikan tabel data, bunyi pasal, dan kerangka *legal drafting* langsung dari SQLite & Qdrant.
+- **Embedding Engine (`backend/app/embedder.py`):** Menggunakan model `nomic-embed-text` yang terikat pada CPU (*CPU-bound embeddings*) agar VRAM GPU tetap 100% didedikasikan untuk inferensi LLM utama.
+
+### 4. AI / LLM Runtime & Safeguard 8GB VRAM (MSI Infinite S3 — NVIDIA RTX 5060 Ti 8GB)
+- **Primary LLM (`gemma4:12b`):** Berjalan di atas Ollama lokal dengan batasan ketat memori 8GB VRAM:
+  - `OLLAMA_FLASH_ATTENTION=1` dan `OLLAMA_KV_CACHE_TYPE=q8_0`
+  - Parameter inferensi terkunci pada `num_ctx: 4096`, `temperature: 1.0`, `top_p: 0.95`, `top_k: 64`
+  - Prepend `<|think|>` pada *system prompt* untuk penalaran pajak multi-langkah, serta pembersihan otomatis blok `<|think|>` dari riwayat *multi-turn chat* sebelum pengiriman *request* guna mencegah *KV cache OOM*.
+- **AI Intelligence Benchmark & Audit Evidence Engine (`backend/app/eval_engine.py`):**
+  - Menghitung skor komposit **SmartTax IQ %**: `(0.40 * Golden Eval Accuracy) + (0.25 * Faithfulness) + (0.20 * Retrieval Precision) + (0.15 * Domain Coverage)` terhadap `golden_dataset.json` (8 kasus pajak daerah DKI Jakarta: PBB-P2, JPB, PBJT, BPHTB, Reklame, PAT, dan sanksi denda keterlambatan).
+  - Mencatat bukti *Before vs. After Delta* ke `./dashboard_intelligence_history.json`.
 
 ---
 
@@ -50,21 +55,29 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 .
 ├── backend/
 │   ├── app/
-│   │   ├── config.py           # Konfigurasi host Ollama (Gemma & DeepSeek), Qdrant, & CORS
-│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, reindex, & korpus-hukum
-│   │   ├── ollama_service.py   # Router kapabilitas (Tarif, Pasal, Perumusan) & streaming LLM
+│   │   ├── config.py           # Konfigurasi Ollama (RTX 5060 Ti 8GB safeguards), Qdrant
+│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, RAG ingestion, & evaluasi audit
+│   │   ├── rag_ingestion.py    # Multi-source Qdrant RAG engine (PDF, Excel/CSV, User Reasoning)
+│   │   ├── eval_engine.py      # Mesin evaluasi RAGAS / TruLens Triad & Golden Dataset Benchmark
+│   │   ├── ollama_service.py   # Router kapabilitas, strip <|think|>, & streaming LLM
 │   │   ├── tax_db.py           # Skema SQLite (pajak_dki_jakarta & korpus_hukum_dki)
-│   │   ├── vector_store.py     # Qdrant client & filter payload (tema_pajak + doc_type)
-│   │   └── embedder.py         # Pembangkit vektor 384-dimensi lokal
+│   │   ├── vector_store.py     # Qdrant chunk persistence, stable UUIDs and metadata filters
+│   │   └── embedder.py         # CPU-bound nomic-embed-text & semantic tax synonym vector engine
+│   ├── golden_dataset.json     # 8 kasus benchmark resmi pajak daerah DKI Jakarta
 │   └── pyproject.toml          # Konfigurasi paket jakarta-smarttax-chatbot-ai-backend
 ├── frontend/
 │   ├── src/
+│   │   ├── components/
+│   │   │   └── IntelligenceAuditDashboard.tsx # Dashboard RAG Ingestion & Audit Evidence
+│   │   ├── types/
+│   │   │   └── audit.ts        # Kontrak tipe TypeScript untuk telemetri & audit evaluasi
 │   │   ├── config/
 │   │   │   └── smarttaxConfig.ts # Konfigurasi modular tema pajak, mode kapabilitas & prompt
 │   │   └── app/
+│   │       ├── audit/page.tsx  # Halaman langsung RAG & Intelligence Audit Dashboard (/audit)
 │   │       ├── layout.tsx      # Root layout, font Inter, & konfigurasi viewport mobile
-│   │       ├── page.tsx        # Komponen utama chat, pemilih mode, & pembaca stream NDJSON
-│   │       └── globals.css     # Variabel desain, layout desktop, & drawer responsif mobile
+│   │       ├── page.tsx        # Komponen utama chat, toggle Audit Terminal, & stream NDJSON
+│   │       └── globals.css     # Variabel desain Civic-Tech / Financial Terminal & layout responsif
 │   └── package.json            # Konfigurasi paket jakarta-smarttax-chatbot-ai-frontend
 └── docs/
     └── ENGINEERING_GUIDE.md    # Panduan teknis lengkap untuk Tim AI Jakarta SmartTax 2026
@@ -72,60 +85,84 @@ Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** 
 
 ---
 
-## Cara Menjalankan di Mesin Lokal
+## Login Google dan akses dashboard
 
-### Ollama lokal (Gemma 4 12B)
+Chatbot sekarang memerlukan login Google. Dashboard dan API pengelolaan hanya
+dapat dipakai akun developer yang ditetapkan pada konfigurasi backend.
+Ikuti [panduan Google Auth](docs/GOOGLE_AUTH_SETUP.md) untuk membuat OAuth Client,
+menetapkan callback, dan menambahkan konfigurasi pada `.env` yang sudah ada.
+Jangan menimpa `.env` saat menjalankan ulang aplikasi. Tanpa konfigurasi Google,
+halaman login tampil tetapi akses chat dan dashboard tetap terkunci.
 
-Pastikan Ollama berjalan di `http://localhost:11434` dan `ollama list` menampilkan
-`gemma4:12b`. Jika belum terpasang, jalankan `ollama pull gemma4:12b`.
-Backend otomatis membaca `backend/.env`; variabel lingkungan proses tetap lebih diutamakan.
+Riwayat pada tahap ini masih berada di browser dan dipisahkan per akun;
+sinkronisasi history server serta kontribusi data training belum tersedia.
 
-```dotenv
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=gemma4:12b
-OLLAMA_DRAFTING_MODEL=gemma4:12b
-OLLAMA_TIMEOUT=300
-OLLAMA_NUM_CTX=8192
-OLLAMA_THINK=false
-```
+## Setup dan Menjalankan Aplikasi (Windows / PowerShell)
 
-Gemma secara default langsung menghasilkan jawaban (`OLLAMA_THINK=false`).
-Ubah menjadi `true` jika ingin mengaktifkan penalaran tambahan.
-Ketiga mode memakai Gemma lokal. Pilihan model di tampilan mengikuti model yang
-terpasang pada Ollama. Permintaan pertama dapat lebih lama saat model dimuat ke memori.
-Periksa `GET http://localhost:8000/api/health` untuk status koneksi dan model aktif.
-Respons chat menyertakan `response_source`: `ollama` untuk keluaran LLM,
-`local_fallback` untuk jawaban dari data lokal saat LLM gagal, atau `local_routing`
-untuk arahan pindah kategori pajak.
+Siapkan **Python 3.12 dari python.org**, **uv**, **Node.js + npm**, dan **Ollama**.
+Qdrant berjalan embedded, jadi tidak perlu memasang Docker atau server database terpisah.
 
-Pada Windows, jalankan backend dari folder `backend`:
+### Setup pertama setelah clone
+
+Lakukan langkah ini **sekali saja**. Perintah `Copy-Item` hanya dijalankan jika file tujuan belum ada. Jika proyek sudah pernah dijalankan di PC ini, langsung ke bagian **Menjalankan ulang**.
+
+**1. Backend** - buka terminal di folder proyek:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-Jalankan frontend dari folder `frontend` dengan `npm run dev`.
-
-
-### 1. Menjalankan Backend (Port `8000`)
-
-```bash
 cd backend
-cp .env.example .env
-uv sync
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+Copy-Item .env.example .env
+uv sync --locked --python (py -3.12 -c "import sys; print(sys.executable)") --no-python-downloads
 ```
 
-### 2. Menjalankan Frontend (Port `3000`)
+Buka `backend/.env` dan sesuaikan konfigurasi. Untuk login Google, ikuti [panduan Google Auth](docs/GOOGLE_AUTH_SETUP.md); jangan membagikan Client Secret atau memasukkannya ke Git.
 
-```bash
+**2. Frontend** - buka terminal lain di folder proyek:
+
+```powershell
 cd frontend
-cp .env.example .env.local
-npm install
+Copy-Item .env.example .env.local
+npm ci
+```
+
+Contoh frontend sudah mengarah ke backend lokal di `http://localhost:8000`.
+
+**3. Model Ollama** - unduh model sekali jika belum tersedia:
+
+```powershell
+ollama pull gemma4:12b
+```
+
+Pastikan aplikasi Ollama berjalan sebelum memakai chatbot. Pengaturan model dan ukuran konteks mengikuti `backend/.env`.
+
+### Menjalankan ulang
+
+Untuk pemakaian berikutnya, cukup jalankan dua terminal berikut. **Tidak perlu menyalin `.env` atau mengunduh model lagi.**
+
+**Terminal backend**, dari folder proyek:
+
+```powershell
+cd backend
+uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+**Terminal frontend**, dari folder proyek:
+
+```powershell
+cd frontend
 npm run dev
 ```
 
-Buka `http://localhost:3000` di *browser*.
+Buka chatbot di **http://localhost:3000** dan dashboard di **http://localhost:3000/admin**. Secara default, Google login diperlukan dan dashboard hanya untuk developer yang diizinkan.
+
+Mode sementara tanpa Google login tersedia pada branch `feat/google-auth` melalui `AUTH_ENABLED=false`, hanya untuk localhost. Gunakan pengaturan itu jika versi yang dijalankan sudah memuat perubahan mode lokal tersebut. Untuk mengaktifkan login kembali, gunakan `AUTH_ENABLED=true`, restart backend, lalu refresh browser.
+
+### Data lokal
+
+- Indeks Qdrant: `backend/qdrant_knowledge_storage/`.
+- Akun, sesi dan history chat: `backend/data/auth.sqlite`.
+- File asli dan arsip sumber: `backend/data/uploads/`.
+
+Data tetap tersimpan saat aplikasi dihentikan atau dijalankan ulang. Jangan menghapus folder data ketika hanya ingin me-restart aplikasi. Jika menemui kendala runtime Windows, lihat [panduan backend Windows](docs/WINDOWS_BACKEND_SETUP.md).
 
 ---
 
@@ -134,3 +171,7 @@ Buka `http://localhost:3000` di *browser*.
 Penjelasan lengkap mengenai arsitektur kode, cara kerja *dual-model* **Gemma & DeepSeek**, serta panduan file mana yang harus diedit saat mengembangkan fitur baru tersedia di:
 
 👉 **[Panduan Engineering Tim AI Jakarta SmartTax 2026 (`docs/ENGINEERING_GUIDE.md`)](docs/ENGINEERING_GUIDE.md)**
+
+Laporan implementasi dan audit Google Auth: [dokumen 29 Oktober 2026](docs/GOOGLE_AUTH_IMPLEMENTATION_2026-10-29.md).
+
+Migrasi indeks November 2026: lihat [Qdrant migration](docs/QDRANT_MIGRATION_2026-11-02.md).
