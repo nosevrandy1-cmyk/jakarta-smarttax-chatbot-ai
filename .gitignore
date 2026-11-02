@@ -13,6 +13,9 @@ backend/data/*.sqlite
 backend/data/*.sqlite-journal
 backend/data/*.db
 backend/qdrant_storage/
+backend/smarttax_vectordb/
+smarttax_vectordb/
+backend/data/uploads/
 
 # Node.js & Next.js
 node_modules/

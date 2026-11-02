@@ -1,5 +1,13 @@
 "use client";
 
+import { AccountMenu } from "@/components/AuthProvider";
+import { apiFetch } from "@/lib/api";
+import { useServerHistory } from "@/lib/useServerHistory";
+
+import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
+import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
+import RenameChatDialog from "@/components/RenameChatDialog";
+import AnswerReferences, { type AnswerReference } from "@/components/AnswerReferences";
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowBendDownRightIcon } from "@phosphor-icons/react/dist/csr/ArrowBendDownRight";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -11,7 +19,6 @@ import { CaretRightIcon } from "@phosphor-icons/react/dist/csr/CaretRight";
 import { CaretUpIcon } from "@phosphor-icons/react/dist/csr/CaretUp";
 import { CheckIcon } from "@phosphor-icons/react/dist/csr/Check";
 import { CoffeeIcon } from "@phosphor-icons/react/dist/csr/Coffee";
-import { CommandIcon } from "@phosphor-icons/react/dist/csr/Command";
 import { CopyIcon } from "@phosphor-icons/react/dist/csr/Copy";
 import { DropIcon } from "@phosphor-icons/react/dist/csr/Drop";
 import { FileTextIcon } from "@phosphor-icons/react/dist/csr/FileText";
@@ -30,8 +37,10 @@ import {
   getStartersForThemeAndMode,
 } from "@/config/smarttaxConfig";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const STORAGE_KEY = "jakarta_smarttax_sessions_v2";
+
+
+
+
 
 interface TaxThemeConfig {
   code: TaxThemeCode;
@@ -83,31 +92,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "PBB-P2 (Bumi & Bangunan)",
     desc: "SPPT, NOP, NJOP, Insentif & Tunggakan DKI Jakarta",
     iconColor: "#60a5fa",
-    greeting: "Mau cek objek atau ketetapan PBB-P2 mana hari ini?",
-    subtitle: "Telusuri NOP, status pembayaran SPPT, atau rincian tagihan wilayah DKI Jakarta.",
-    placeholder: "Ketik NOP, nama gedung, atau tanya informasi PBB-P2...",
-    suggestions: [
-      {
-        title: "Cek Tunggakan PBB-P2 DKI",
-        subtitle: "Daftar objek yang belum lunas beserta akumulasi denda",
-        prompt: "Tampilkan daftar tunggakan PBB-P2 di DKI Jakarta beserta rincian dendanya",
-      },
-      {
-        title: "Rekapitulasi Wilayah DKI Jakarta",
-        subtitle: "Target & realisasi PBB-P2 per Kota Administrasi",
-        prompt: "Rekapitulasi ketetapan dan realisasi PBB-P2 DKI Jakarta per wilayah",
-      },
-      {
-        title: "Lacak NOP Gedung SCBD",
-        subtitle: "Rincian ketetapan NOP 31.74.010.003.008-0042.0",
-        prompt: "Cek detail SPPT NOP 31.74.010.003.008-0042.0 di Jakarta Selatan",
-      },
-      {
-        title: "Tarif & Kriteria Bebas 100%",
-        subtitle: "Informasi tarif, NJOPTKP, dan pembebasan hunian DKI",
-        prompt: "Berapa tarif PBB-P2, NJOPTKP Rp 60 juta, dan syarat pembebasan 100% di DKI Jakarta?",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   PBJT: {
     code: "PBJT",
@@ -115,31 +103,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "PBJT (Restoran, Hotel, Parkir, Hiburan)",
     desc: "Makanan & Minuman, Perhotelan, Parkir, Hiburan & Listrik",
     iconColor: "#f59e0b",
-    greeting: "Cek pajak restoran, hotel, parkir, atau hiburan di DKI?",
-    subtitle: "Lacak NPWPD, ketetapan e-SPTPD masa pajak, dan rincian objek PBJT.",
-    placeholder: "Ketik NPWPD, nama restoran/hotel, atau tanya tarif PBJT...",
-    suggestions: [
-      {
-        title: "Tunggakan e-SPTPD PBJT",
-        subtitle: "Wajib Pajak Restoran & Hiburan yang belum lunas",
-        prompt: "Tampilkan daftar tunggakan PBJT di DKI Jakarta beserta dendanya",
-      },
-      {
-        title: "Rincian Tarif PBJT DKI",
-        subtitle: "Restoran 10%, Hotel 10%, Parkir 10%, Hiburan 40%",
-        prompt: "Jelaskan rincian tarif PBJT Makanan/Minuman, Hotel, Parkir, dan Hiburan di DKI Jakarta",
-      },
-      {
-        title: "Daftar Objek PBJT Senopati & PIK",
-        subtitle: "Data NPWPD Restoran, Hotel Thamrin & Karaoke PIK",
-        prompt: "Tampilkan seluruh data Wajib Pajak PBJT di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi PBJT per Wilayah",
-        subtitle: "Realisasi PBJT Jakarta Selatan, Pusat, Utara & Timur",
-        prompt: "Rekapitulasi ketetapan dan realisasi PBJT DKI Jakarta per wilayah",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   BPHTB: {
     code: "BPHTB",
@@ -147,31 +114,10 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "BPHTB (Perolehan Hak Tanah/Bangunan)",
     desc: "SSPD Jual Beli (AJB), Waris/Hibah & NPOPTKP DKI Jakarta",
     iconColor: "#a78bfa",
-    greeting: "Butuh rincian BPHTB jual beli atau waris di Jakarta?",
-    subtitle: "Periksa status validasi SSPD BPHTB, potongan NPOPTKP, dan simulasi tarif 5%.",
-    placeholder: "Ketik nomor SSPD, lokasi AJB, atau tanya rumus NPOPTKP...",
-    suggestions: [
-      {
-        title: "Daftar SSPD BPHTB DKI",
-        subtitle: "Transaksi Jual Beli (Cilandak) & Waris (Cempaka Putih)",
-        prompt: "Tampilkan seluruh data SSPD BPHTB di DKI Jakarta",
-      },
-      {
-        title: "NPOPTKP Jual Beli vs Waris",
-        subtitle: "Umum Rp 80 Juta & Waris/Hibah Rp 350 Juta (Tarif 5%)",
-        prompt: "Berapa tarif BPHTB dan besaran NPOPTKP Jual Beli serta Waris di DKI Jakarta?",
-      },
-      {
-        title: "SSPD Belum Tervalidasi",
-        subtitle: "Cek berkas BPHTB yang masih berstatus belum lunas",
-        prompt: "Tampilkan daftar tunggakan BPHTB yang belum lunas di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi Penerimaan BPHTB",
-        subtitle: "Ringkasan ketetapan & realisasi BPHTB per wilayah",
-        prompt: "Rekapitulasi ketetapan dan realisasi BPHTB di DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   REKLAME: {
     code: "REKLAME",
@@ -179,67 +125,26 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     label: "Pajak Reklame",
     desc: "SKPD Videotron LED, Billboard, NSR & Kawasan Kendali Ketat",
     iconColor: "#f472b6",
-    greeting: "Cek SKPD reklame, videotron, atau tarif kawasan DKI?",
-    subtitle: "Telusuri Nilai Sewa Reklame (NSR), titik tayang, dan status SKPD.",
-    placeholder: "Ketik nomor SKPD Reklame, lokasi titik tayang, atau tanya NSR...",
-    suggestions: [
-      {
-        title: "Daftar Titik Reklame & Videotron",
-        subtitle: "Videotron LED Bundaran HI & Billboard Kemang Raya",
-        prompt: "Tampilkan seluruh data objek Pajak Reklame di DKI Jakarta",
-      },
-      {
-        title: "SKPD Reklame Belum Lunas",
-        subtitle: "Cek tunggakan Pajak Reklame beserta denda",
-        prompt: "Tampilkan daftar tunggakan Pajak Reklame di DKI Jakarta",
-      },
-      {
-        title: "Tarif 25% & Kawasan Protokol",
-        subtitle: "Ketentuan koridor protokol Sudirman–Thamrin–Kuningan",
-        prompt: "Bagaimana aturan tarif Pajak Reklame 25% dan Kawasan Kendali Ketat di DKI Jakarta?",
-      },
-      {
-        title: "Rekapitulasi Pajak Reklame",
-        subtitle: "Target & realisasi Pajak Reklame per wilayah",
-        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Reklame DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
   PAT: {
     code: "PAT",
     shortLabel: "Air Tanah",
     label: "Pajak Air Tanah (PAT)",
-    desc: "SKPD Air Tanah, Volume m³, NPAT & Tarif 20% DKI Jakarta",
+    desc: "Pajak Air Tanah dan dokumen terkait",
     iconColor: "#38bdf8",
-    greeting: "Cek ketetapan atau volume Pajak Air Tanah DKI?",
-    subtitle: "Pantau SKPD sumur bor industri, perhitungan NPAT, dan status pembayaran.",
-    placeholder: "Ketik nomor SKPD PAT, nama industri, atau tanya rumus NPAT...",
-    suggestions: [
-      {
-        title: "Data Wajib Pajak Air Tanah",
-        subtitle: "Kawasan Industri Pulo Gadung & Gedung Komersial Kuningan",
-        prompt: "Tampilkan seluruh data Wajib Pajak Air Tanah (PAT) di DKI Jakarta",
-      },
-      {
-        title: "Tunggakan SKPD Air Tanah",
-        subtitle: "Daftar objek PAT yang belum lunas beserta denda",
-        prompt: "Tampilkan daftar tunggakan Pajak Air Tanah di DKI Jakarta",
-      },
-      {
-        title: "Perhitungan NPAT & Tarif 20%",
-        subtitle: "Komponen Harga Dasar Air & Faktor Nilai Air DKI",
-        prompt: "Jelaskan ketentuan tarif 20% dan dasar pengenaan NPAT Pajak Air Tanah di DKI Jakarta",
-      },
-      {
-        title: "Rekapitulasi PAT per Wilayah",
-        subtitle: "Ringkasan ketetapan & realisasi PAT DKI Jakarta",
-        prompt: "Rekapitulasi ketetapan dan realisasi Pajak Air Tanah di DKI Jakarta",
-      },
-    ],
+    greeting: "Apa yang ingin kamu bahas?",
+    subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
+    placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
+    suggestions: [],
   },
 };
 
 interface ChatMessage {
+  references?: AnswerReference[];
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -254,6 +159,7 @@ interface ChatMessage {
 }
 
 interface ChatSession {
+  titleEdited?: boolean;
   id: string;
   title: string;
   theme: TaxThemeCode;
@@ -269,7 +175,7 @@ function renderInline(
   return parts.map((part, i) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={i} style={{ color: "#ffffff", fontWeight: 600 }}>
+        <strong key={i} style={{ color: "var(--text-primary)", fontWeight: 600 }}>
           {part.slice(2, -2)}
         </strong>
       );
@@ -383,7 +289,7 @@ function FormattedMarkdown({
           key={i}
           style={{
             border: "none",
-            borderTop: "1px solid rgba(255,255,255,0.1)",
+            borderTop: "1px solid rgba(var(--chat-ink), 0.1)",
             margin: "14px 0",
           }}
         />
@@ -445,6 +351,21 @@ function FormattedMarkdown({
 }
 
 export default function TaxAssistantView() {
+
+
+  const [appearance, setAppearance] = useState<"dark" | "light">("dark");
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jakarta_smarttax_chat_appearance");
+      if (saved === "light" || saved === "dark") setAppearance(saved);
+    } catch { /* Keep the default when browser storage is unavailable. */ }
+  }, []);
+  function toggleAppearance() {
+    const next = appearance === "dark" ? "light" : "dark";
+    setAppearance(next);
+    try { localStorage.setItem("jakarta_smarttax_chat_appearance", next); } catch { /* The toggle still works without storage. */ }
+  }
+
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [selectedModel, setSelectedModel] = useState<string>("gemma4:12b");
 
@@ -452,7 +373,7 @@ export default function TaxAssistantView() {
     const controller = new AbortController();
     async function loadLocalModels() {
       try {
-        const response = await fetch(`${API_BASE}/api/health`, { signal: controller.signal });
+        const response = await apiFetch(`/api/health`, { signal: controller.signal });
         if (!response.ok) return;
         const health = await response.json();
         const installed: string[] = health.ollama?.installed_local_models || [];
@@ -473,19 +394,10 @@ export default function TaxAssistantView() {
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
   const [cmdQuery, setCmdQuery] = useState<string>("");
 
-  const [sessions, setSessions] = useState<ChatSession[]>([
-    {
-      id: "default-session",
-      title: "Percakapan Baru",
-      theme: "PBB-P2",
-      updatedAt: Date.now(),
-      messages: [],
-    },
+  const [renamingChat, setRenamingChat] = useState<{ id: string; title: string } | null>(null);
+  const { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush } = useServerHistory<ChatSession>([
+    { id: 'default-session', title: 'Percakapan Baru', theme: 'PBB-P2', updatedAt: Date.now(), messages: [] },
   ]);
-  const [activeSessionId, setActiveSessionId] =
-    useState<string>("default-session");
-  const [hydrated, setHydrated] = useState<boolean>(false);
-
   const [input, setInput] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string>("");
@@ -507,6 +419,7 @@ export default function TaxAssistantView() {
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
   const themeDropdownRef = useRef<HTMLDivElement | null>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastNewChatAtRef = useRef<number>(0);
 
   const activeSession =
     sessions.find((s) => s.id === activeSessionId) || sessions[0];
@@ -527,35 +440,7 @@ export default function TaxAssistantView() {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
     }
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          setSessions(parsed.sessions);
-          if (parsed.activeSessionId) {
-            setActiveSessionId(parsed.activeSessionId);
-          }
-        }
-      }
-    } catch {
-      // Ignore storage access errors
-    } finally {
-      setHydrated(true);
-    }
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ sessions, activeSessionId })
-      );
-    } catch {
-      // Ignore quota errors
-    }
-  }, [sessions, activeSessionId, hydrated]);
 
   useEffect(() => {
     if (!userScrolledUpRef.current) {
@@ -638,13 +523,43 @@ export default function TaxAssistantView() {
 
   function createNewChat(themeOverride?: TaxThemeCode) {
     if (isGenerating) stopGeneration();
+
+    const now = Date.now();
+    if (now - lastNewChatAtRef.current < 400) {
+      return;
+    }
+    lastNewChatAtRef.current = now;
+
     const targetTheme = themeOverride || currentTheme;
-    const newId = `session-${Date.now()}`;
+
+    if (activeSession.messages.length === 0) {
+      if (themeOverride && activeSession.theme !== themeOverride) {
+        switchTheme(themeOverride);
+      }
+      setInput("");
+      closeSidebarOnMobile();
+      setTimeout(() => textareaRef.current?.focus(), 50);
+      return;
+    }
+
+    const existingEmpty = sessions.find((s) => s.messages.length === 0);
+    if (existingEmpty) {
+      setActiveSessionId(existingEmpty.id);
+      if (themeOverride && existingEmpty.theme !== themeOverride) {
+        switchTheme(themeOverride);
+      }
+      setInput("");
+      closeSidebarOnMobile();
+      setTimeout(() => textareaRef.current?.focus(), 50);
+      return;
+    }
+
+    const newId = `session-${now}`;
     const newSession: ChatSession = {
       id: newId,
       title: "Percakapan Baru",
       theme: targetTheme,
-      updatedAt: Date.now(),
+      updatedAt: now,
       messages: [],
     };
     setSessions((prev) => [newSession, ...prev]);
@@ -731,7 +646,7 @@ export default function TaxAssistantView() {
       id: assistantMsgId,
       role: "assistant",
       content: "",
-      statusText: `Menelusuri arsip ${effectiveTheme} Bapenda DKI Jakarta...`,
+      statusText: "Menghubungi model lokal…",
       isStreaming: true,
       originalQuestion: query,
     };
@@ -747,7 +662,7 @@ export default function TaxAssistantView() {
         return {
           ...s,
           theme: effectiveTheme,
-          title: isFirst ? query.slice(0, 34) : s.title,
+          title: isFirst && !s.titleEdited ? query.slice(0, 34) : s.title,
           updatedAt: Date.now(),
           messages: [...s.messages, userMsg, placeholderAssistant],
         };
@@ -766,7 +681,7 @@ export default function TaxAssistantView() {
     abortControllerRef.current = controller;
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+      const response = await apiFetch(`/api/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -804,6 +719,9 @@ export default function TaxAssistantView() {
             continue;
           }
 
+          if (evt.type === "error") {
+            throw new Error(evt.text || "Model lokal tidak dapat dihubungi.");
+          }
           setSessions((prev) =>
             prev.map((s) => {
               if (s.id !== activeSessionId) return s;
@@ -823,7 +741,7 @@ export default function TaxAssistantView() {
                   if (evt.type === "thinking") {
                     return {
                       ...m,
-                      statusText: `Menyusun rincian ${effectiveTheme}...`,
+                      statusText: "Model sedang memproses jawaban…",
                       thinking: (m.thinking || "") + (evt.delta || ""),
                     };
                   }
@@ -840,6 +758,8 @@ export default function TaxAssistantView() {
                       isStreaming: false,
                       statusText: undefined,
                       modelUsed: evt.model_used,
+                      references: evt.references || [],
+                      content: typeof evt.answer === "string" ? evt.answer : m.content,
                       durationMs: evt.duration_ms,
                       suggestedTheme:
                         (evt.suggested_theme as TaxThemeCode) ||
@@ -953,10 +873,26 @@ export default function TaxAssistantView() {
     showToastMessage(`Disalin: ${codeText}`);
   }
 
+  useEffect(() => () => abortControllerRef.current?.abort(), []);
+
   const isChatEmpty = activeSession.messages.length === 0;
 
+  if (!hydrated) return <main className="auth-screen"><section className="auth-card">
+    <h1>{loadError ? 'Riwayat belum dapat dimuat' : 'Memuat percakapan…'}</h1>
+    {loadError && <><p>Periksa koneksi lalu muat ulang. Riwayat di server tidak akan ditimpa.</p><button className="auth-google-button" onClick={() => window.location.reload()}>Muat ulang</button></>}
+  </section></main>;
+
+
   return (
-    <div className="app-layout">
+    <div className="app-layout" data-chat-theme={appearance}>
+<div className="history-sync-status" role="status">{syncStatus}<button type="button" onClick={() => { void flush().catch(() => {}); }}>Simpan</button></div>
+      {renamingChat && <RenameChatDialog key={renamingChat.id} title={renamingChat.title}
+        onCancel={() => setRenamingChat(null)} onSave={name => {
+          setSessions(previous => previous.map(session => session.id === renamingChat.id
+            ? { ...session, title: name, titleEdited: true, updatedAt: Date.now() } : session));
+          setRenamingChat(null);
+        }} />}
+
       {/* Mobile Drawer Backdrop */}
       {sidebarOpen && (
         <div
@@ -1010,14 +946,18 @@ export default function TaxAssistantView() {
           </div>
         </div>
 
-        <button
-          onClick={() => createNewChat()}
-          className="session-item"
+        <div
+          onClick={() => {
+            closeSidebarOnMobile();
+            setTimeout(() => textareaRef.current?.focus(), 40);
+          }}
+          className="session-item active"
           style={{
             marginBottom: "14px",
             minWidth: "240px",
             fontWeight: 500,
-            color: "#ececec",
+            color: "var(--text-primary)",
+            cursor: "pointer",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -1026,9 +966,9 @@ export default function TaxAssistantView() {
                 width: "26px",
                 height: "26px",
                 borderRadius: "999px",
-                background: "#2a2a2a",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#ececec",
+                background: "var(--bg-raised)",
+                border: "1px solid rgba(var(--chat-ink), 0.12)",
+                color: "var(--text-primary)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1038,13 +978,13 @@ export default function TaxAssistantView() {
             </div>
             <span>Pajak Daerah DKI Jakarta</span>
           </div>
-        </button>
+        </div>
 
         <div
           style={{
             fontSize: "11.5px",
             fontWeight: 600,
-            color: "#7a7a7a",
+            color: "var(--text-muted)",
             padding: "4px 10px 6px",
             minWidth: "240px",
           }}
@@ -1086,12 +1026,17 @@ export default function TaxAssistantView() {
                 <span
                   style={{
                     fontSize: "11px",
-                    color: "#7a7a7a",
+                    color: "var(--text-muted)",
                     fontWeight: 500,
                   }}
                 >
                   {s.theme}
                 </span>
+                <button type="button" className="rename-session-btn"
+                  title="Ganti nama percakapan" aria-label={`Ganti nama percakapan: ${s.title}`}
+                  onClick={event => { event.stopPropagation(); setRenamingChat({ id: s.id, title: s.title }); }}>
+                  <PencilSimpleIcon size={14} aria-hidden="true" />
+                </button>
                 {sessions.length > 1 && (
                   <button
                     onClick={(e) => deleteSession(s.id, e)}
@@ -1108,53 +1053,13 @@ export default function TaxAssistantView() {
 
         <div
           style={{
-            borderTop: "1px solid rgba(255,255,255,0.06)",
+            borderTop: "1px solid rgba(var(--chat-ink), 0.06)",
             paddingTop: "10px",
             marginTop: "8px",
             minWidth: "240px",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "8px 10px",
-              borderRadius: "8px",
-            }}
-          >
-            <div
-              style={{
-                width: "30px",
-                height: "30px",
-                borderRadius: "999px",
-                background: "#2a2a2a",
-                border: "1px solid rgba(255,255,255,0.1)",
-                color: "#ececec",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 600,
-                fontSize: "11px",
-              }}
-            >
-              ST
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 500,
-                  color: "#ececec",
-                }}
-              >
-                Jakarta SmartTax 2026
-              </div>
-              <div style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
-                Tim AI Jakarta SmartTax
-              </div>
-            </div>
-          </div>
+          <AccountMenu />
         </div>
       </aside>
 
@@ -1184,40 +1089,10 @@ export default function TaxAssistantView() {
 
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setCmdOpen(true);
-              setCmdQuery("");
-            }}
-            style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "8px",
-              padding: "4px 10px",
-              fontSize: "12px",
-              color: "#8e8e8e",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              whiteSpace: "nowrap",
-            }}
-            title="Buka Pencarian Cepat"
-          >
-            <span>Cari</span>
-            <kbd
-              style={{
-                fontSize: "11px",
-                color: "#b4b4b4",
-                fontFamily: "inherit",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "2px",
-              }}
-            >
-              <CommandIcon size={12} aria-hidden="true" />K
-            </kbd>
+          <button type="button" className="chat-appearance-toggle" onClick={toggleAppearance}
+            aria-label={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}
+            title={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}>
+            {appearance === "dark" ? <SunIcon size={17} aria-hidden="true" /> : <MoonIcon size={17} aria-hidden="true" />}
           </button>
         </header>
 
@@ -1263,8 +1138,8 @@ export default function TaxAssistantView() {
                   gap: "6px",
                   padding: "4px",
                   borderRadius: "999px",
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(var(--chat-ink), 0.04)",
+                  border: "1px solid rgba(var(--chat-ink), 0.08)",
                   marginBottom: "18px",
                 }}
               >
@@ -1284,9 +1159,9 @@ export default function TaxAssistantView() {
                         fontSize: "12.5px",
                         fontWeight: isActive ? 600 : 400,
                         background: isActive
-                          ? "rgba(255,255,255,0.13)"
+                          ? "rgba(var(--chat-ink), 0.13)"
                           : "transparent",
-                        color: isActive ? "#ffffff" : "#9ca3af",
+                        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
                         cursor: "pointer",
                         transition: "all 0.16s ease",
                       }}
@@ -1309,7 +1184,7 @@ export default function TaxAssistantView() {
                       style={{
                         fontSize: "13.5px",
                         fontWeight: 500,
-                        color: "#ececec",
+                        color: "var(--text-primary)",
                       }}
                     >
                       {card.title}
@@ -1317,7 +1192,7 @@ export default function TaxAssistantView() {
                     <div
                       style={{
                         fontSize: "12px",
-                        color: "#7a7a7a",
+                        color: "var(--text-muted)",
                         marginTop: "2px",
                       }}
                     >
@@ -1356,8 +1231,8 @@ export default function TaxAssistantView() {
                           alignSelf: "flex-end",
                           width: "100%",
                           maxWidth: "88%",
-                          background: "#2f2f2f",
-                          border: "1px solid rgba(255,255,255,0.16)",
+                          background: "var(--bg-surface)",
+                          border: "1px solid rgba(var(--chat-ink), 0.16)",
                           borderRadius: "18px",
                           padding: "12px 14px",
                           display: "flex",
@@ -1374,7 +1249,7 @@ export default function TaxAssistantView() {
                             background: "transparent",
                             border: "none",
                             resize: "none",
-                            color: "#ececec",
+                            color: "var(--text-primary)",
                             fontSize: "15px",
                             lineHeight: 1.5,
                           }}
@@ -1399,8 +1274,8 @@ export default function TaxAssistantView() {
                             type="button"
                             onClick={() => submitEditedMessage(idx)}
                             style={{
-                              background: "#ececec",
-                              color: "#171717",
+                              background: "var(--text-primary)",
+                              color: "var(--bg-sidebar)",
                               border: "none",
                               borderRadius: "999px",
                               padding: "6px 14px",
@@ -1429,8 +1304,8 @@ export default function TaxAssistantView() {
                         <div
                           style={{
                             maxWidth: "82%",
-                            background: "#2f2f2f",
-                            color: "#ececec",
+                            background: "var(--bg-surface)",
+                            color: "var(--text-primary)",
                             padding: "11px 16px",
                             borderRadius: "20px",
                             fontSize: "15px",
@@ -1457,8 +1332,8 @@ export default function TaxAssistantView() {
                           height: "28px",
                           minWidth: "28px",
                           borderRadius: "999px",
-                          background: "#2a2a2a",
-                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "var(--bg-raised)",
+                          border: "1px solid rgba(var(--chat-ink), 0.12)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -1487,7 +1362,7 @@ export default function TaxAssistantView() {
                                 width: "7px",
                                 height: "7px",
                                 borderRadius: "999px",
-                                background: "#ececec",
+                                background: "var(--text-primary)",
                                 animation: "pulseDot 1s infinite ease-in-out",
                               }}
                             />
@@ -1497,24 +1372,40 @@ export default function TaxAssistantView() {
 
                         {m.thinking && (
                           <details
+                            open={m.isStreaming}
                             style={{
                               marginBottom: "10px",
-                              background: "rgba(255,255,255,0.03)",
-                              border: "1px solid rgba(255,255,255,0.08)",
+                              background: "rgba(var(--chat-ink), 0.03)",
+                              border: "1px solid rgba(var(--chat-ink), 0.08)",
                               borderRadius: "10px",
                               padding: "8px 12px",
                               fontSize: "12.5px",
-                              color: "#9ca3af",
+                              color: "var(--text-secondary)",
                             }}
                           >
-                            <summary className="thinking-summary">
+                            <summary
+                              className="thinking-summary"
+                              style={{
+                                cursor: "pointer",
+                                userSelect: "none",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
                               <CaretRightIcon size={13} className="thinking-caret" aria-hidden="true" />
-                              Penalaran
+                              <span style={{ fontWeight: 600, color: "var(--text-secondary)" }}>
+                                {m.isStreaming && !m.content
+                                  ? "Sedang menelaah regulasi & dasar hukum..."
+                                  : "Alur Penalaran"}
+                              </span>
                             </summary>
                             <div
                               style={{
                                 marginTop: "6px",
                                 whiteSpace: "pre-wrap",
+                                lineHeight: 1.55,
+                                color: "var(--text-secondary)",
                               }}
                             >
                               {m.thinking}
@@ -1527,6 +1418,8 @@ export default function TaxAssistantView() {
                           isStreaming={m.isStreaming}
                           onCopyCode={handleCopyInlineCode}
                         />
+
+                        {!m.isStreaming && <AnswerReferences references={m.references} />}
 
                         {!m.isStreaming &&
                           m.suggestedTheme &&
@@ -1553,7 +1446,7 @@ export default function TaxAssistantView() {
                                   {DKI_TAX_THEMES[m.suggestedTheme].shortLabel} &
                                   Tanya Ulang
                                 </span>
-                                <ArrowRightIcon size={14} color="#8e8e8e" aria-hidden="true" />
+                                <ArrowRightIcon size={14} color="var(--text-muted)" aria-hidden="true" />
                               </button>
                             </div>
                           )}
@@ -1597,7 +1490,7 @@ export default function TaxAssistantView() {
                               <span
                                 style={{
                                   fontSize: "11.5px",
-                                  color: "#6b6b6b",
+                                  color: "var(--text-muted)",
                                   marginLeft: "6px",
                                 }}
                               >
@@ -1624,7 +1517,7 @@ export default function TaxAssistantView() {
                               <span
                                 style={{
                                   fontSize: "11.5px",
-                                  color: "#7a7a7a",
+                                  color: "var(--text-muted)",
                                   fontWeight: 500,
                                 }}
                               >
@@ -1644,7 +1537,7 @@ export default function TaxAssistantView() {
                                     onClick={() => sendPrompt(q)}
                                     className="followup-chip"
                                   >
-                                    <ArrowBendDownRightIcon size={14} color="#7a7a7a" aria-hidden="true" />
+                                    <ArrowBendDownRightIcon size={14} color="var(--text-muted)" aria-hidden="true" />
                                     <span>{q}</span>
                                   </button>
                                 ))}
@@ -1687,17 +1580,24 @@ export default function TaxAssistantView() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  sendPrompt();
+                  if (!isGenerating) {
+                    sendPrompt();
+                  }
                 }
               }}
-              placeholder={themeConfig.placeholder}
+              disabled={isGenerating}
+              placeholder={
+                isGenerating
+                  ? "Jakarta SmartTax sedang menelaah & merumuskan jawaban..."
+                  : themeConfig.placeholder
+              }
               style={{
                 width: "100%",
                 background: "transparent",
                 border: "none",
                 outline: "none",
                 resize: "none",
-                color: "#ececec",
+                color: "var(--text-primary)",
                 fontSize: "15px",
                 lineHeight: "1.5",
                 padding: "2px 2px",
@@ -1736,17 +1636,17 @@ export default function TaxAssistantView() {
                     <span>{themeConfig.shortLabel}</span>
                     <span
                       className="composer-pill-scope"
-                      style={{ color: "rgba(255,255,255,0.2)" }}
+                      style={{ color: "rgba(var(--chat-ink), 0.2)" }}
                     >
                       |
                     </span>
                     <span
                       className="composer-pill-scope"
-                      style={{ color: "#8e8e8e", fontWeight: 400 }}
+                      style={{ color: "var(--text-muted)", fontWeight: 400 }}
                     >
                       DKI Jakarta
                     </span>
-                    <CaretUpIcon size={12} weight="regular" aria-hidden="true" color="#8e8e8e" style={{
+                    <CaretUpIcon size={12} weight="regular" aria-hidden="true" color="var(--text-muted)" style={{
                         transform: themeMenuOpen
                           ? "rotate(180deg)"
                           : "rotate(0deg)",
@@ -1760,7 +1660,7 @@ export default function TaxAssistantView() {
                         style={{
                           fontSize: "11px",
                           fontWeight: 600,
-                          color: "#7a7a7a",
+                          color: "var(--text-muted)",
                           padding: "6px 11px 4px",
                         }}
                       >
@@ -1797,7 +1697,7 @@ export default function TaxAssistantView() {
                                     style={{
                                       fontSize: "13px",
                                       fontWeight: 500,
-                                      color: "#ececec",
+                                      color: "var(--text-primary)",
                                     }}
                                   >
                                     {item.label}
@@ -1805,7 +1705,7 @@ export default function TaxAssistantView() {
                                   <div
                                     style={{
                                       fontSize: "11.5px",
-                                      color: "#8e8e8e",
+                                      color: "var(--text-muted)",
                                     }}
                                   >
                                     {item.desc}
@@ -1815,7 +1715,7 @@ export default function TaxAssistantView() {
                               {isSelected && (
                                 <span
                                   style={{
-                                    color: "#ececec",
+                                    color: "var(--text-primary)",
                                     fontSize: "13px",
                                   }}
                                 >
@@ -1859,12 +1759,11 @@ export default function TaxAssistantView() {
             style={{
               textAlign: "center",
               fontSize: "11px",
-              color: "#737373",
+              color: "var(--text-muted)",
               marginTop: "7px",
             }}
           >
-            Data bersumber langsung dari arsip lokal Bapenda DKI Jakarta • Tanpa
-            akses internet.
+            Jawaban mengacu pada dokumen proyek yang tersedia. Periksa sumber sebelum menggunakan informasinya.
           </div>
         </div>
       </div>
@@ -1879,10 +1778,10 @@ export default function TaxAssistantView() {
                 alignItems: "center",
                 gap: "10px",
                 padding: "14px 16px",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                borderBottom: "1px solid rgba(var(--chat-ink), 0.08)",
               }}
             >
-              <MagnifyingGlassIcon size={17} weight="regular" aria-hidden="true" color="#8e8e8e" />
+              <MagnifyingGlassIcon size={17} weight="regular" aria-hidden="true" color="var(--text-muted)" />
               <input
                 type="text"
                 value={cmdQuery}
@@ -1892,7 +1791,7 @@ export default function TaxAssistantView() {
                   flex: 1,
                   background: "transparent",
                   border: "none",
-                  color: "#ececec",
+                  color: "var(--text-primary)",
                   fontSize: "14.5px",
                 }}
                 autoFocus
@@ -1901,12 +1800,12 @@ export default function TaxAssistantView() {
                 type="button"
                 onClick={() => setCmdOpen(false)}
                 style={{
-                  background: "rgba(255,255,255,0.07)",
+                  background: "rgba(var(--chat-ink), 0.07)",
                   border: "none",
                   borderRadius: "6px",
                   padding: "2px 7px",
                   fontSize: "11px",
-                  color: "#9ca3af",
+                  color: "var(--text-secondary)",
                   cursor: "pointer",
                 }}
               >
@@ -1925,7 +1824,7 @@ export default function TaxAssistantView() {
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: "#7a7a7a",
+                  color: "var(--text-muted)",
                   padding: "4px 10px 6px",
                 }}
               >
@@ -1968,18 +1867,18 @@ export default function TaxAssistantView() {
                             style={{
                               fontSize: "13px",
                               fontWeight: 500,
-                              color: "#ececec",
+                              color: "var(--text-primary)",
                             }}
                           >
                             {t.label}
                           </div>
-                          <div style={{ fontSize: "11.5px", color: "#8e8e8e" }}>
+                          <div style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
                             {t.desc}
                           </div>
                         </div>
                       </div>
                       {currentTheme === code && (
-                        <span style={{ fontSize: "12px", color: "#9ca3af" }}>
+                        <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
                           Aktif
                         </span>
                       )}
@@ -1991,7 +1890,7 @@ export default function TaxAssistantView() {
                 style={{
                   fontSize: "11px",
                   fontWeight: 600,
-                  color: "#7a7a7a",
+                  color: "var(--text-muted)",
                   padding: "10px 10px 6px",
                 }}
               >
@@ -2016,7 +1915,7 @@ export default function TaxAssistantView() {
                     <span
                       style={{
                         fontSize: "13px",
-                        color: "#ececec",
+                        color: "var(--text-primary)",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -2024,7 +1923,7 @@ export default function TaxAssistantView() {
                     >
                       {s.title}
                     </span>
-                    <span style={{ fontSize: "11.5px", color: "#7a7a7a" }}>
+                    <span style={{ fontSize: "11.5px", color: "var(--text-muted)" }}>
                       {s.theme}
                     </span>
                   </button>
@@ -2042,13 +1941,13 @@ export default function TaxAssistantView() {
               type="button"
               onClick={undoDeleteSession}
               style={{
-                background: "rgba(255,255,255,0.1)",
-                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(var(--chat-ink), 0.1)",
+                border: "1px solid rgba(var(--chat-ink), 0.18)",
                 borderRadius: "6px",
                 padding: "3px 9px",
                 fontSize: "12px",
                 fontWeight: 500,
-                color: "#ffffff",
+                color: "var(--text-primary)",
                 cursor: "pointer",
               }}
             >
