@@ -1,112 +1,38 @@
-# Jakarta SmartTax 2026 — Platform AI Chatbot Pajak Daerah DKI Jakarta
+# Jakarta SmartTax
 
-Repositori resmi **Tim AI Jakarta SmartTax 2026**. Proyek ini adalah platform *chat* interaktif berbasis RAG (*Retrieval-Augmented Generation*) untuk seluruh kategori pajak daerah **Bapenda Provinsi DKI Jakarta**:
+Jakarta SmartTax (JST) adalah chatbot untuk membahas pajak daerah DKI Jakarta berdasarkan dokumen yang dimasukkan oleh pengelola. Kategori yang tersedia di tampilan mencakup PBB-P2, PBJT, BPHTB, Pajak Reklame, dan Pajak Air Tanah.
 
-- **PBB-P2** (Pajak Bumi dan Bangunan Perdesaan dan Perkotaan)
-- **PBJT** (Pajak Barang dan Jasa Tertentu — Restoran, Perhotelan, Parkir, Kesenian & Hiburan)
-- **BPHTB** (Bea Perolehan Hak atas Tanah dan Bangunan)
-- **REKLAME** (Pajak Reklame — Videotron, Megatron, Billboard Kawasan Protokol & Kendali Ketat)
-- **PAT** (Pajak Air Tanah — Sumur Bor Industri & Komersial)
+Aplikasi ini masih dikembangkan. Jawaban bergantung pada isi dokumen, hasil pencarian sumber, dan model yang digunakan. Pilihan kategori tidak berarti datanya sudah tersedia. Informasi penting tetap perlu diperiksa kembali melalui sumbernya.
 
-Platform ini mendukung 3 kapabilitas utama:
-1. **Konsultasi Tarif, Rumus & Data Pajak** (Simulasi perhitungan, pengecekan NOP/NPWPD, tunggakan, dan rekap wilayah)
-2. **Telusur Pasal & Dasar Hukum** (Pencarian bunyi pasal, ayat, dan kaidah regulasi pajak daerah)
-3. **Perumusan Dasar Hukum Baru (*Legal Drafting*)** (Penyusunan draf Konsiderans *Menimbang*, Dasar *Mengingat*, dan Batang Tubuh *Rancangan Pasal & Ayat*)
+## Yang sudah tersedia
 
-Seluruh pemrosesan berjalan **100% lokal (*On-Premise*)** menggunakan **Gemma** dan **DeepSeek** di atas **Ollama**, sehingga jawaban terkunci pada data dan korpus hukum resmi yang disediakan tanpa halusinasi.
+Pengguna bisa memulai percakapan dari Home, membuka kembali riwayat, mengganti nama, menyimpan, dan menyematkan percakapan. Chat yang disematkan tetap berada di atas. Halaman Disimpan dan Semua percakapan tersedia terpisah, sedangkan pencarian dapat dibuka dari sidebar.
 
----
+Jawaban tampil bertahap dan dapat dihentikan. Jika ada referensi, pengguna bisa membuka panel sumber untuk melihat nama dokumen dan halaman yang dirujuk. Pada layar kecil, panel ini terbuka dari bawah. Tampilan mendukung mode terang dan gelap, dengan pengaturan tema di sidebar.
 
-## Ringkasan Tech Stack (Frontend, Backend, Data & AI)
+Chat menerima pesan teks. Upload dokumen dan pengelolaan sumber dilakukan melalui dashboard developer. Tombol Bagikan masih dinonaktifkan; tautan percakapan publik belum tersedia.
 
-### 1. Frontend (`frontend/`)
-- **Framework:** **Next.js 15** (*App Router*) + **React 19** + **TypeScript 5** (`jakarta-smarttax-chatbot-ai-frontend`).
-- **Arsitektur Konfigurasi Modular (`src/config/smarttaxConfig.ts`):** Seluruh daftar tema pajak, mode kapabilitas (`konsultasi`, `pasal_hukum`, `perumusan_hukum`), dan *starter prompts* dipisahkan ke satu file konfigurasi agar tim mudah menambah fitur atau kategori baru.
-- **Styling & Mobile UX (`src/app/globals.css`):** Menggunakan **Native CSS Custom Properties** dengan dukungan *off-canvas drawer* responsif di layar HP, *tabular-nums* untuk tabel rupiah, dan transisi halus antar-tema.
-- **Streaming Client:** Membaca aliran **NDJSON** (*Newline-Delimited JSON*) secara *real-time* menggunakan Web `ReadableStream` + `TextDecoder`.
+## Cara kerja aplikasi
 
-### 2. Backend (`backend/`)
-- **Framework API:** **FastAPI** (Python 3.11+) di atas server ASGI **Uvicorn** (`jakarta-smarttax-chatbot-ai-backend`).
-- **Manajemen Paket:** Dikelola menggunakan **`uv`** (`pyproject.toml` & `uv.lock`).
-- **Validasi & Keamanan:** Validasi *payload* menggunakan **Pydantic v2** ditambah *middleware* HTTP Security Headers (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) serta pembatasan `CORS_ORIGINS`.
+Frontend menggunakan Next.js, React, dan TypeScript. Backend menggunakan FastAPI dan menjalankan permintaan model melalui Ollama. Model bawaan pada contoh konfigurasi adalah `gemma4:12b`.
 
-### 3. Database & Vector Engine (`backend/data/`)
-- **Database Relasional (SQLite 3 — `pajak_dki.sqlite`):**
-  - Tabel `pajak_dki_jakarta`: Menyimpan data ketetapan objek pajak, NOP/NPWPD/SSPD/SKPD, nilai DPP/NJOP, pokok pajak, denda, dan status pembayaran.
-  - Tabel `korpus_hukum_dki`: Menyimpan struktur pasal, ayat, bab/bagian, bunyi norma hukum, dan kaidah perumusan (*legal drafting*) untuk tiap kategori pajak.
-- **Vector Database (Qdrant):** Indeks aktif untuk PDF, tabel Excel/CSV, dan contoh kasus. Mode default embedded lokal di `backend/qdrant_knowledge_storage`, collection `jakarta_smarttax_knowledge`, cosine similarity dengan vektor hashing aplikasi. File asli dan metadata status tetap di arsip sumber SQLite. Startup tidak menghapus atau membangun ulang indeks secara otomatis.
+Dokumen yang diunggah diproses menjadi potongan teks, lalu disimpan bersama metadata sumbernya. Qdrant menyimpan indeks vektor untuk pencarian dokumen dan contoh kasus. Konfigurasi bawaan memakai penyimpanan embedded lokal, sehingga tidak membutuhkan server Qdrant terpisah.
 
-- **Embedding Engine (`backend/app/embedder.py`):** Menggunakan model `nomic-embed-text` yang terikat pada CPU (*CPU-bound embeddings*) agar VRAM GPU tetap 100% didedikasikan untuk inferensi LLM utama.
+Embedding yang aktif masih menggunakan hashing khusus aplikasi. BGE-M3 belum diterapkan. PDF dibaca menggunakan pypdf, sementara data tabel diproses menggunakan pandas. OCR untuk PDF scan belum tersedia.
 
-### 4. AI / LLM Runtime & Safeguard 8GB VRAM (MSI Infinite S3 — NVIDIA RTX 5060 Ti 8GB)
-- **Primary LLM (`gemma4:12b`):** Berjalan di atas Ollama lokal dengan batasan ketat memori 8GB VRAM:
-  - `OLLAMA_FLASH_ATTENTION=1` dan `OLLAMA_KV_CACHE_TYPE=q8_0`
-  - Parameter inferensi terkunci pada `num_ctx: 4096`, `temperature: 1.0`, `top_p: 0.95`, `top_k: 64`
-  - Prepend `<|think|>` pada *system prompt* untuk penalaran pajak multi-langkah, serta pembersihan otomatis blok `<|think|>` dari riwayat *multi-turn chat* sebelum pengiriman *request* guna mencegah *KV cache OOM*.
-- **AI Intelligence Benchmark & Audit Evidence Engine (`backend/app/eval_engine.py`):**
-  - Menghitung skor komposit **SmartTax IQ %**: `(0.40 * Golden Eval Accuracy) + (0.25 * Faithfulness) + (0.20 * Retrieval Precision) + (0.15 * Domain Coverage)` terhadap `golden_dataset.json` (8 kasus pajak daerah DKI Jakarta: PBB-P2, JPB, PBJT, BPHTB, Reklame, PAT, dan sanksi denda keterlambatan).
-  - Mencatat bukti *Before vs. After Delta* ke `./dashboard_intelligence_history.json`.
+Ketika pengguna bertanya, backend mencari sumber yang relevan dan mengirim konteks tersebut ke model. Sapaan sederhana melewati pencarian dokumen, tetapi jawabannya tetap dibuat oleh model. Pembatasan kategori pajak diberikan melalui instruksi model dan masih perlu diuji kepatuhannya.
 
----
+Akun, sesi, dan riwayat percakapan disimpan di SQLite. Riwayat tetap ada setelah aplikasi dijalankan ulang selama file datanya tidak dihapus. Memory lintas percakapan belum tersedia.
 
-## Struktur Folder Proyek
+## Persiapan di Windows
 
-```text
-.
-├── backend/
-│   ├── app/
-│   │   ├── config.py           # Konfigurasi Ollama (RTX 5060 Ti 8GB safeguards), Qdrant
-│   │   ├── main.py             # Entrypoint FastAPI, endpoint chat, RAG ingestion, & evaluasi audit
-│   │   ├── rag_ingestion.py    # Multi-source Qdrant RAG engine (PDF, Excel/CSV, User Reasoning)
-│   │   ├── eval_engine.py      # Mesin evaluasi RAGAS / TruLens Triad & Golden Dataset Benchmark
-│   │   ├── ollama_service.py   # Router kapabilitas, strip <|think|>, & streaming LLM
-│   │   ├── tax_db.py           # Skema SQLite (pajak_dki_jakarta & korpus_hukum_dki)
-│   │   ├── vector_store.py     # Qdrant chunk persistence, stable UUIDs and metadata filters
-│   │   └── embedder.py         # CPU-bound nomic-embed-text & semantic tax synonym vector engine
-│   ├── golden_dataset.json     # 8 kasus benchmark resmi pajak daerah DKI Jakarta
-│   └── pyproject.toml          # Konfigurasi paket jakarta-smarttax-chatbot-ai-backend
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── IntelligenceAuditDashboard.tsx # Dashboard RAG Ingestion & Audit Evidence
-│   │   ├── types/
-│   │   │   └── audit.ts        # Kontrak tipe TypeScript untuk telemetri & audit evaluasi
-│   │   ├── config/
-│   │   │   └── smarttaxConfig.ts # Konfigurasi modular tema pajak, mode kapabilitas & prompt
-│   │   └── app/
-│   │       ├── audit/page.tsx  # Halaman langsung RAG & Intelligence Audit Dashboard (/audit)
-│   │       ├── layout.tsx      # Root layout, font Inter, & konfigurasi viewport mobile
-│   │       ├── page.tsx        # Komponen utama chat, toggle Audit Terminal, & stream NDJSON
-│   │       └── globals.css     # Variabel desain Civic-Tech / Financial Terminal & layout responsif
-│   └── package.json            # Konfigurasi paket jakarta-smarttax-chatbot-ai-frontend
-└── docs/
-    └── ENGINEERING_GUIDE.md    # Panduan teknis lengkap untuk Tim AI Jakarta SmartTax 2026
-```
+Siapkan Python 3.12 dari python.org, uv, Node.js beserta npm, dan Ollama. Perintah di bawah menggunakan PowerShell dan dimulai dari folder utama proyek.
 
----
+### Setup pertama
 
-## Login Google dan akses dashboard
+Langkah ini dilakukan setelah clone atau saat menyiapkan PC baru. Salin contoh konfigurasi hanya jika file tujuan belum ada. Jangan menjalankan perintah penyalinan pada konfigurasi yang sudah dipakai karena isinya dapat tertimpa.
 
-Chatbot sekarang memerlukan login Google. Dashboard dan API pengelolaan hanya
-dapat dipakai akun developer yang ditetapkan pada konfigurasi backend.
-Ikuti [panduan Google Auth](docs/GOOGLE_AUTH_SETUP.md) untuk membuat OAuth Client,
-menetapkan callback, dan menambahkan konfigurasi pada `.env` yang sudah ada.
-Jangan menimpa `.env` saat menjalankan ulang aplikasi. Tanpa konfigurasi Google,
-halaman login tampil tetapi akses chat dan dashboard tetap terkunci.
-
-Riwayat pada tahap ini masih berada di browser dan dipisahkan per akun;
-sinkronisasi history server serta kontribusi data training belum tersedia.
-
-## Setup dan Menjalankan Aplikasi (Windows / PowerShell)
-
-Siapkan **Python 3.12 dari python.org**, **uv**, **Node.js + npm**, dan **Ollama**.
-Qdrant berjalan embedded, jadi tidak perlu memasang Docker atau server database terpisah.
-
-### Setup pertama setelah clone
-
-Lakukan langkah ini **sekali saja**. Perintah `Copy-Item` hanya dijalankan jika file tujuan belum ada. Jika proyek sudah pernah dijalankan di PC ini, langsung ke bagian **Menjalankan ulang**.
-
-**1. Backend** - buka terminal di folder proyek:
+Buka terminal untuk backend:
 
 ```powershell
 cd backend
@@ -114,9 +40,9 @@ Copy-Item .env.example .env
 uv sync --locked --python (py -3.12 -c "import sys; print(sys.executable)") --no-python-downloads
 ```
 
-Buka `backend/.env` dan sesuaikan konfigurasi. Untuk login Google, ikuti [panduan Google Auth](docs/GOOGLE_AUTH_SETUP.md); jangan membagikan Client Secret atau memasukkannya ke Git.
+Sesuaikan `backend/.env` sebelum menjalankan aplikasi. Pilih pengaturan login sesuai kebutuhan pada bagian akses akun di bawah.
 
-**2. Frontend** - buka terminal lain di folder proyek:
+Buka terminal lain untuk frontend:
 
 ```powershell
 cd frontend
@@ -124,54 +50,93 @@ Copy-Item .env.example .env.local
 npm ci
 ```
 
-Contoh frontend sudah mengarah ke backend lokal di `http://localhost:8000`.
+Contoh konfigurasi frontend menggunakan backend di `http://localhost:8000`.
 
-**3. Model Ollama** - unduh model sekali jika belum tersedia:
+Unduh model jika belum tersedia:
 
 ```powershell
 ollama pull gemma4:12b
 ```
 
-Pastikan aplikasi Ollama berjalan sebelum memakai chatbot. Pengaturan model dan ukuran konteks mengikuti `backend/.env`.
+Pastikan Ollama berjalan. Nama model dan ukuran konteks mengikuti pengaturan pada `backend/.env`; contoh konfigurasi menggunakan `OLLAMA_NUM_CTX=4096`. Pemakaian RAM dan VRAM akan berubah mengikuti model dan ukuran konteks yang dipilih.
 
-### Menjalankan ulang
+### Menjalankan aplikasi
 
-Untuk pemakaian berikutnya, cukup jalankan dua terminal berikut. **Tidak perlu menyalin `.env` atau mengunduh model lagi.**
+Jika setup sudah pernah dilakukan, cukup buka dua terminal. Tidak perlu menyalin ulang konfigurasi atau mengunduh model yang sudah ada.
 
-**Terminal backend**, dari folder proyek:
+Pada terminal backend:
 
 ```powershell
 cd backend
 uv run --locked uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-**Terminal frontend**, dari folder proyek:
+Pada terminal frontend:
 
 ```powershell
 cd frontend
 npm run dev
 ```
 
-Buka chatbot di **http://localhost:3000** dan dashboard di **http://localhost:3000/admin**. Secara default, Google login diperlukan dan dashboard hanya untuk developer yang diizinkan.
+Buka [chatbot](http://localhost:3000). Dashboard tersedia di [halaman admin](http://localhost:3000/admin) untuk pengguna yang memiliki akses developer.
 
-Mode sementara tanpa Google login tersedia pada branch `feat/google-auth` melalui `AUTH_ENABLED=false`, hanya untuk localhost. Gunakan pengaturan itu jika versi yang dijalankan sudah memuat perubahan mode lokal tersebut. Untuk mengaktifkan login kembali, gunakan `AUTH_ENABLED=true`, restart backend, lalu refresh browser.
+## Akses akun dan dashboard
 
-### Data lokal
+Dengan `AUTH_ENABLED=true`, pengguna perlu mendaftar melalui Google sebelum bisa login. Dashboard dan API pengelolaan hanya dapat digunakan oleh akun developer yang ditentukan di konfigurasi backend.
 
-- Indeks Qdrant: `backend/qdrant_knowledge_storage/`.
-- Akun, sesi dan history chat: `backend/data/auth.sqlite`.
-- File asli dan arsip sumber: `backend/data/uploads/`.
+Untuk menyiapkan Google Auth, buat OAuth Client jenis Web application. Gunakan `http://localhost:3000` sebagai alamat frontend dan `http://localhost:8000/api/auth/google/callback` sebagai redirect URI untuk pengembangan lokal. Isi `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_PUBLIC_URL`, `GOOGLE_REDIRECT_URI`, dan `AUTH_DEVELOPER_EMAILS` pada file `.env` yang sudah ada. Konfigurasi Google dan aplikasi harus memakai alamat yang sama.
 
-Data tetap tersimpan saat aplikasi dihentikan atau dijalankan ulang. Jangan menghapus folder data ketika hanya ingin me-restart aplikasi. Jika menemui kendala runtime Windows, lihat [panduan backend Windows](docs/WINDOWS_BACKEND_SETUP.md).
+Mode pengembangan tanpa login tersedia melalui `AUTH_ENABLED=false`, khusus localhost. Mode ini menggunakan satu identitas developer lokal, sehingga pengguna lokal tidak memiliki riwayat terpisah. Aktifkan kembali autentikasi sebelum menyiapkan akses publik. Setelah mengubah pengaturan autentikasi, restart backend dan muat ulang browser.
 
----
+Jangan memasukkan `.env`, client secret, atau data akun ke Git.
 
-## Panduan Teknis Tim Engineering
+## Penyimpanan lokal
 
-Penjelasan lengkap mengenai arsitektur kode, cara kerja *dual-model* **Gemma & DeepSeek**, serta panduan file mana yang harus diedit saat mengembangkan fitur baru tersedia di:
+| Isi | Lokasi bawaan |
+| :--- | :--- |
+| Akun, sesi, dan riwayat chat | `backend/data/auth.sqlite` |
+| File asli dan arsip sumber | `backend/data/uploads/` |
+| Indeks pengetahuan Qdrant | `backend/qdrant_knowledge_storage/` |
 
-👉 **[Panduan Engineering Tim AI Jakarta SmartTax 2026 (`docs/ENGINEERING_GUIDE.md`)](docs/ENGINEERING_GUIDE.md)**
+Lokasi relatif pada konfigurasi penyimpanan ditentukan dari folder backend. Menjalankan ulang aplikasi tidak menghapus data. Jangan menghapus file atau folder tersebut jika tujuannya hanya me-restart server.
 
-Laporan implementasi dan audit Google Auth: [dokumen 29 Oktober 2026](docs/GOOGLE_AUTH_IMPLEMENTATION_2026-10-29.md).
+Folder `docs/` dan skrip `start.sh` digunakan secara lokal dan diabaikan oleh Git. Keduanya tidak diperlukan untuk mengikuti perintah menjalankan aplikasi di README ini.
 
-Migrasi indeks November 2026: lihat [Qdrant migration](docs/QDRANT_MIGRATION_2026-11-02.md).
+## Bagian kode yang sering digunakan
+
+| Lokasi | Kegunaan |
+| :--- | :--- |
+| `frontend/src/app/page.tsx` | Home, percakapan, dan navigasi chat |
+| `frontend/src/app/globals.css` | Tampilan dan penyesuaian ukuran layar |
+| `frontend/src/components/SourcePanel.tsx` | Panel referensi jawaban |
+| `frontend/src/lib/useServerHistory.ts` | Pemuatan dan penyimpanan riwayat |
+| `frontend/src/lib/api.ts` | Permintaan API dan pembatas klik berulang |
+| `backend/app/main.py` | Endpoint utama FastAPI |
+| `backend/app/auth.py` | Login, sesi, dan pemeriksaan akses |
+| `backend/app/chat_history.py` | Penyimpanan riwayat per akun |
+| `backend/app/ollama_service.py` | Konteks jawaban dan streaming Ollama |
+| `backend/app/rag_ingestion.py` | Pengolahan sumber dan pencarian pengetahuan |
+| `backend/app/vector_store.py` | Penyimpanan indeks Qdrant |
+| `backend/app/embedder.py` | Pembentukan vektor teks |
+
+## Pengujian
+
+Jalankan pengujian backend dari folder `backend`:
+
+```powershell
+uv run --locked python -m unittest discover -s tests
+```
+
+Jalankan pengujian interaksi API dan riwayat dari folder `frontend`:
+
+```powershell
+node --test tests/chat-history-state.test.cjs tests/api-request-limits.test.cjs tests/api-local-recovery.test.cjs
+```
+
+Untuk memeriksa build frontend:
+
+```powershell
+npm run build
+```
+
+Hentikan frontend development sebelum menjalankan build di folder yang sama agar keduanya tidak menulis ke folder `.next` secara bersamaan.

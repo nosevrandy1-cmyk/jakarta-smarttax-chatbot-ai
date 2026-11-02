@@ -37,6 +37,7 @@ from .tax_db import (
 from .auth import install_auth
 from .chat_history import install_history
 from .source_routes import install_source_routes
+from .chat_models import ChatRequestInput
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
@@ -67,7 +68,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[install_auth_settings.public_url],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-JST-Account-ID"],
 )
 
@@ -80,19 +81,6 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     return response
-
-
-class ChatMessageInput(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1, max_length=8000)
-
-
-class ChatRequestInput(BaseModel):
-    message: str = Field(..., min_length=1, max_length=2000)
-    history: List[ChatMessageInput] = Field(default_factory=list, max_length=20)
-    model: Optional[str] = Field(default=DEFAULT_CHAT_MODEL, max_length=80)
-    tema_pajak: Optional[str] = Field(default="PBB-P2", max_length=20)
-    mode_kapabilitas: Optional[str] = Field(default="konsultasi", max_length=32)
 
 
 class EvaluateRequestInput(BaseModel):

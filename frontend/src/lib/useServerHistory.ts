@@ -1,9 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { historyTransport } from '@/lib/chatHistoryState';
 import { useAuth } from '@/components/AuthProvider';
 import { apiFetch, setHistoryFlusher } from '@/lib/api';
 
-type SessionShape = { id: string; messages: { isStreaming?: boolean; statusText?: string }[] };
+type SessionShape = { lastFailed?: boolean; messagesLoaded?: boolean; messageCount?: number; preview?: string; id: string; messages: { isStreaming?: boolean; statusText?: string }[] };
 
 export function useServerHistory<T extends SessionShape>(initial: T[]) {
   const { user } = useAuth();
@@ -25,7 +26,7 @@ export function useServerHistory<T extends SessionShape>(initial: T[]) {
       setSyncStatus('Menyimpan riwayat…');
       try {
         const response = await apiFetch('/api/history', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-JST-Account-ID': user.id },
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-JST-Account-ID': user.id },
           body: JSON.stringify({ ...JSON.parse(payload), revision: revision.current }),
         });
         if (!response.ok) {
@@ -50,15 +51,17 @@ export function useServerHistory<T extends SessionShape>(initial: T[]) {
     disposed.current = false;
     async function load() {
       try {
-        const response = await apiFetch('/api/history', { signal: controller.signal, headers: { 'X-JST-Account-ID': user.id } });
+        const response = await apiFetch('/api/history/index', { signal: controller.signal, headers: { 'X-JST-Account-ID': user.id } });
         if (!response.ok) throw new Error('History unavailable');
         const history = await response.json();
         if (controller.signal.aborted) return;
         revision.current = history.revision;
         if (history.sessions.length) {
-          acknowledged.current = JSON.stringify({ activeSessionId: history.activeSessionId || history.sessions[0].id, sessions: history.sessions });
-          setSessions(history.sessions);
-          setActiveSessionId(history.activeSessionId || history.sessions[0].id);
+          acknowledged.current = JSON.stringify(historyTransport(history.sessions as T[], history.activeSessionId || history.sessions[0].id));
+          // Start with an unsaved draft; the URL decides which room to open.
+          const draft = {...initial[0], id: `draft-${crypto.randomUUID()}`};
+          setSessions([draft, ...history.sessions]);
+          setActiveSessionId(draft.id);
         }
         setHydrated(true);
         setLoadError(false);
@@ -73,9 +76,7 @@ export function useServerHistory<T extends SessionShape>(initial: T[]) {
 
   useEffect(() => {
     if (!hydrated) return;
-    latest.current = JSON.stringify({ activeSessionId, sessions: sessions.map(session => ({
-      ...session, messages: session.messages.map(({ isStreaming: _streaming, statusText: _status, ...message }) => message),
-    })) });
+    latest.current = JSON.stringify(historyTransport(sessions, activeSessionId));
     // Stream tokens stay in memory; save the completed/stopped response once.
     if (sessions.some(session => session.messages.some(message => message.isStreaming))) {
       setSyncStatus('Jawaban sedang dibuat; riwayat disimpan setelah selesai.');
@@ -86,5 +87,32 @@ export function useServerHistory<T extends SessionShape>(initial: T[]) {
     return () => clearTimeout(timer);
   }, [sessions, activeSessionId, hydrated, flush]);
 
-  return { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush };
+  const [roomLoadError, setRoomLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const needsMessages = sessions.find(room => room.id === activeSessionId)?.messagesLoaded === false;
+  useEffect(() => {
+    if (!hydrated || !needsMessages) {setRoomLoadError('');return;}
+    const controller = new AbortController();
+    setRoomLoadError('');
+    void (async () => {
+      try {
+        // Wait for pending writes without persisting an unfinished stream.
+        await queue.current.catch(() => {});
+        const response = await apiFetch(`/api/history/rooms/${encodeURIComponent(activeSessionId)}`, {signal:controller.signal,headers:{'X-JST-Account-ID':user.id}});
+        if (!response.ok) throw new Error('Percakapan belum dapat dimuat. Coba lagi.');
+        const data = await response.json();
+        if (controller.signal.aborted) return;
+        // Our queued metadata saves can advance the revision while this read is in flight.
+        // They preserve unloaded messages; a newer server revision still signals another writer.
+        if (data.revision > revision.current) throw new Error('Riwayat berubah di tab lain. Muat ulang halaman.');
+        setSessions(previous => previous.map(room => room.id === activeSessionId && room.messagesLoaded === false
+          ? {...room, messages:data.session.messages, messagesLoaded:true} : room));
+      } catch (error) {
+        if (!controller.signal.aborted) setRoomLoadError(error instanceof Error ? error.message : 'Percakapan belum dapat dimuat.');
+      }
+    })();
+    return () => controller.abort();
+  }, [activeSessionId, hydrated, needsMessages, loadAttempt, flush, user.id]);
+
+  return { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush, roomLoadError, retryRoomLoad: () => setLoadAttempt(value => value + 1) };
 }

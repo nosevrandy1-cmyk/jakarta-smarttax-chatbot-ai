@@ -339,7 +339,7 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
     app.add_middleware(LimitedBodyMiddleware)
     router = APIRouter(prefix='/api/auth')
     public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/register','GET'),('/api/auth/google/callback','GET')}
-    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT')}
+    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT'),('/api/history','PATCH'),('/api/history/index','GET')}
 
     local_user = {'id':'jst-local-development', 'email':'', 'name':'Pengembangan lokal',
                   'google_authoritative':False, 'local_developer':True}
@@ -394,7 +394,8 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
             if session is None:
                 return auth_json({'detail':'Silakan masuk dengan Google.'}, status_code=401, headers={'Cache-Control':'no-store'})
             developer = settings.is_developer(session)
-            if (path,request.method) not in chat_routes | {('/api/auth/logout','POST')} and not developer:
+            history_read = request.method == 'GET' and path.startswith('/api/history/rooms/')
+            if (path,request.method) not in chat_routes | {('/api/auth/logout','POST')} and not history_read and not developer:
                 return auth_json({'detail':'Hanya akun developer yang dapat mengakses fitur ini.'}, status_code=403)
             if request.method not in {'GET','HEAD'}:
                 csrf = request.headers.get('x-csrf-token','')

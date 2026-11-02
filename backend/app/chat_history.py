@@ -12,6 +12,7 @@ class Message(BaseModel):
     role: Literal['user', 'assistant']
     content: str = Field(max_length=100000)
     references: list[dict] | None = Field(default=None, max_length=50)
+    failed: bool | None = None
     thinking: str | None = Field(default=None, max_length=100000)
     modelUsed: str | None = Field(default=None, max_length=120)
     durationMs: float | None = Field(default=None, ge=0)
@@ -26,6 +27,9 @@ class Conversation(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     theme: Literal['PBB-P2', 'JPB', 'PBJT', 'BPHTB', 'REKLAME', 'PAT']
     updatedAt: int = Field(ge=0)
+    saved: bool | None = None
+    pinned: bool | None = None
+    unread: bool | None = None
     titleEdited: bool | None = None
     messages: list[Message] = Field(max_length=500)
 
@@ -44,10 +48,19 @@ class History(BaseModel):
         if self.activeSessionId is not None and self.activeSessionId not in ids:
             raise ValueError('Active conversation not found')
         for session in self.sessions:
-            message_ids = [m.id for m in session.messages]
+            message_ids = [m.id for m in (session.messages or [])]
             if len(message_ids) != len(set(message_ids)):
                 raise ValueError('Duplicate message ID')
         return self
+
+
+class ConversationPatch(Conversation):
+    # Omitted messages preserve the server copy of an unopened conversation.
+    messages: list[Message] | None = Field(default=None, max_length=500)
+
+
+class HistoryPatch(History):
+    sessions: list[ConversationPatch] = Field(max_length=200)
 
 
 def install_history(app, store):
@@ -67,6 +80,63 @@ def install_history(app, store):
         if row is None:
             return {'revision': 0, 'sessions': [], 'activeSessionId': None}
         return {**json.loads(row['payload']), 'revision': row['revision']}
+
+    @router.get('/index')
+    async def read_index(request: Request):
+        history = await read_history(request)
+        active = history.get('activeSessionId')
+        result = []
+        for session in history['sessions']:
+            messages = session.get('messages', [])
+            result.append({**session,
+                'messageCount': len(messages),
+                'lastFailed': bool(messages and messages[-1].get('failed')),
+                'preview': next((m['content'][:180] for m in reversed(messages) if m['role'] == 'user'), ''),
+                'messagesLoaded': session['id'] == active,
+                'messages': messages if session['id'] == active else []})
+        return {**history, 'sessions': result}
+
+    @router.get('/rooms/{room_id}')
+    async def read_room(room_id: str, request: Request):
+        history = await read_history(request)
+        session = next((s for s in history['sessions'] if s['id'] == room_id), None)
+        if session is None:
+            raise HTTPException(404, 'Percakapan tidak ditemukan.')
+        return {'revision': history['revision'], 'session': session}
+
+    @router.patch('')
+    async def patch_history(body: HistoryPatch, request: Request):
+        if not request.headers.get('x-jst-account-id'):
+            raise HTTPException(400, 'Identitas akun pada request diperlukan.')
+        user_id = request.state.auth_user['id']
+        if request.headers.get('x-jst-account-id') != user_id:
+            raise HTTPException(409, 'Akun browser berubah. Muat ulang halaman.')
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT revision,payload FROM account_chat_history WHERE user_id=?', (user_id,)).fetchone()
+            revision = row['revision'] if row else 0
+            if body.revision != revision:
+                raise HTTPException(409, 'Riwayat berubah di tab atau perangkat lain. Muat ulang sebelum melanjutkan.')
+            if not db.execute('SELECT 1 FROM auth_users WHERE id=?', (user_id,)).fetchone():
+                raise HTTPException(401, 'Sesi sudah tidak berlaku.')
+            previous = {s['id']: s for s in json.loads(row['payload'])['sessions']} if row else {}
+            sessions = []
+            for room in body.sessions:
+                value = room.model_dump(exclude_none=True)
+                if room.messages is None:
+                    if room.id not in previous:
+                        raise HTTPException(422, 'Isi percakapan baru diperlukan.')
+                    value['messages'] = previous[room.id]['messages']
+                sessions.append(value)
+            # Validate the complete snapshot after restoring unloaded messages.
+            payload = History(revision=revision, activeSessionId=body.activeSessionId, sessions=sessions).model_dump(exclude={'revision'}, exclude_none=True)
+            encoded = json.dumps(payload, ensure_ascii=False)
+            if len(encoded.encode('utf-8')) > 900000:
+                raise HTTPException(413, 'Riwayat terlalu besar. Hapus percakapan yang tidak diperlukan.')
+            db.execute("""INSERT INTO account_chat_history VALUES (?,?,?)
+                ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload""",
+                (user_id, revision + 1, encoded))
+        return {'revision': revision + 1}
 
     @router.put('')
     async def save_history(body: History, request: Request):

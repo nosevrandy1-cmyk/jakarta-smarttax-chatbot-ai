@@ -1,13 +1,19 @@
 "use client";
 
+import RoomActions from "@/components/RoomActions";
+import PanelResizeHandle, {usePanelSize} from "@/components/PanelResizeHandle";
 import { AccountMenu } from "@/components/AuthProvider";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiRequestLimitError, getChatWaitMs } from "@/lib/api";
 import { useServerHistory } from "@/lib/useServerHistory";
 
+import { BookmarkSimpleIcon } from "@phosphor-icons/react/dist/csr/BookmarkSimple";
+import { PushPinIcon } from "@phosphor-icons/react/dist/csr/PushPin";
+import { hasStartedConversation, orderSidebarConversations } from "@/lib/chatHistoryState";
+import { ShareNetworkIcon } from "@phosphor-icons/react/dist/csr/ShareNetwork";
 import { SunIcon } from "@phosphor-icons/react/dist/csr/Sun";
 import { MoonIcon } from "@phosphor-icons/react/dist/csr/Moon";
 import RenameChatDialog from "@/components/RenameChatDialog";
-import AnswerReferences, { type AnswerReference } from "@/components/AnswerReferences";
+import SourcePanel, { type AnswerReference } from "@/components/SourcePanel";
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowBendDownRightIcon } from "@phosphor-icons/react/dist/csr/ArrowBendDownRight";
 import { ArrowDownIcon } from "@phosphor-icons/react/dist/csr/ArrowDown";
@@ -91,7 +97,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     shortLabel: "PBB-P2",
     label: "PBB-P2 (Bumi & Bangunan)",
     desc: "SPPT, NOP, NJOP, Insentif & Tunggakan DKI Jakarta",
-    iconColor: "#60a5fa",
+    iconColor: "#4da3ff",
     greeting: "Apa yang ingin kamu bahas?",
     subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
     placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
@@ -102,7 +108,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     shortLabel: "PBJT",
     label: "PBJT (Restoran, Hotel, Parkir, Hiburan)",
     desc: "Makanan & Minuman, Perhotelan, Parkir, Hiburan & Listrik",
-    iconColor: "#f59e0b",
+    iconColor: "#ffb224",
     greeting: "Apa yang ingin kamu bahas?",
     subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
     placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
@@ -113,7 +119,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     shortLabel: "BPHTB",
     label: "BPHTB (Perolehan Hak Tanah/Bangunan)",
     desc: "SSPD Jual Beli (AJB), Waris/Hibah & NPOPTKP DKI Jakarta",
-    iconColor: "#a78bfa",
+    iconColor: "#b18aff",
     greeting: "Apa yang ingin kamu bahas?",
     subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
     placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
@@ -124,7 +130,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     shortLabel: "Reklame",
     label: "Pajak Reklame",
     desc: "SKPD Videotron LED, Billboard, NSR & Kawasan Kendali Ketat",
-    iconColor: "#f472b6",
+    iconColor: "#ff63b5",
     greeting: "Apa yang ingin kamu bahas?",
     subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
     placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
@@ -135,7 +141,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
     shortLabel: "Air Tanah",
     label: "Pajak Air Tanah (PAT)",
     desc: "Pajak Air Tanah dan dokumen terkait",
-    iconColor: "#38bdf8",
+    iconColor: "#19d4f4",
     greeting: "Apa yang ingin kamu bahas?",
     subtitle: "Tanyakan informasi dari dokumen proyek yang tersedia.",
     placeholder: "Tulis pertanyaan tentang dokumen atau topik ini...",
@@ -144,6 +150,7 @@ const DKI_TAX_THEMES: Record<TaxThemeCode, TaxThemeConfig> = {
 };
 
 interface ChatMessage {
+  failed?: boolean;
   references?: AnswerReference[];
   id: string;
   role: "user" | "assistant";
@@ -159,6 +166,13 @@ interface ChatMessage {
 }
 
 interface ChatSession {
+  pinned?: boolean;
+  saved?: boolean;
+  lastFailed?: boolean;
+  messagesLoaded?: boolean;
+  messageCount?: number;
+  preview?: string;
+  unread?: boolean;
   titleEdited?: boolean;
   id: string;
   title: string;
@@ -194,7 +208,7 @@ function renderInline(
       );
     }
     if (/^\[\d+(?:\s*,\s*\d+)*\]$/.test(part)) {
-      return <span key={i} className="chat-inline-citation">{part}</span>;
+      return <React.Fragment key={i}>{part.slice(1,-1).split(/\s*,\s*/).map((number,index) => <React.Fragment key={number}>{index > 0 ? ", " : ""}<button type="button" className="chat-inline-citation jst-citation-button" data-citation={number} aria-label={`Buka sumber ${number}`}>[{number}]</button></React.Fragment>)}</React.Fragment>;
     }
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });
@@ -391,17 +405,103 @@ export default function TaxAssistantView() {
     return () => controller.abort();
   }, []);
 
-  const [capabilityMode, setCapabilityMode] =
+  const [capabilityMode] =
     useState<CapabilityModeCode>("konsultasi");
   const [themeMenuOpen, setThemeMenuOpen] = useState<boolean>(false);
   const [cmdOpen, setCmdOpen] = useState<boolean>(false);
   const [cmdQuery, setCmdQuery] = useState<string>("");
 
   const [renamingChat, setRenamingChat] = useState<{ id: string; title: string } | null>(null);
-  const { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush } = useServerHistory<ChatSession>([
+  const { sessions, setSessions, activeSessionId, setActiveSessionId, hydrated, loadError, syncStatus, flush, roomLoadError, retryRoomLoad } = useServerHistory<ChatSession>([
     { id: 'default-session', title: 'Percakapan Baru', theme: 'PBB-P2', updatedAt: Date.now(), messages: [] },
   ]);
+  const [homeView,setHomeView]=useState(true);
+  const sessionsRef=useRef(sessions);sessionsRef.current=sessions;
+  const [historyView, setHistoryView] = useState(false);
+  const [savedView,setSavedView]=useState(false);
+  const [sidebarWidth,setSidebarWidth]=usePanelSize("jst-sidebar-width",260,220,420);
+  const [historyLimit, setHistoryLimit] = useState(20);
+  const [sourceSelection, setSourceSelection] = useState<{messageId: string; number?: number} | null>(null);
+  useEffect(() => {
+    if (!sourceSelection) return;
+    const keepMobilePanelsSeparate = () => {if (window.innerWidth < 768) setSidebarOpen(false);};
+    keepMobilePanelsSeparate(); window.addEventListener("resize", keepMobilePanelsSeparate);
+    return () => window.removeEventListener("resize", keepMobilePanelsSeparate);
+  }, [sourceSelection]);
+  const activeViewRef = useRef({id: activeSessionId, history: historyView || homeView});
+  activeViewRef.current = {id: activeSessionId, history: historyView || homeView};
+  const generatingSessionRef = useRef<string | null>(null);
+  useEffect(() => {
+    if(!hydrated)return;
+    const sync=()=>{
+      const path=window.location.pathname;
+      setHistoryView(path==="/history"||path==="/saved");setSavedView(path==="/saved");setSourceSelection(null);
+      if(path==="/"){openBlankScreen(true);return;}
+      setHomeView(false);
+      if(path==="/chat"){
+        const roomId=new URLSearchParams(window.location.search).get("room");
+        if(roomId&&sessionsRef.current.some(room=>room.id===roomId))setActiveSessionId(roomId);
+        else {openBlankScreen(true);window.history.replaceState(null,"","/");}
+      }
+    };
+    sync();window.addEventListener("popstate",sync);
+    return()=>window.removeEventListener("popstate",sync);
+  },[hydrated]);
+  function openBlankScreen(home:boolean){
+    const draft=sessionsRef.current.find(room=>!hasStartedConversation(room));
+    const room:ChatSession={id:draft?.id||`session-${Date.now()}`,title:"Chat baru",theme:draft?.theme||"PBB-P2",updatedAt:Date.now(),messages:[],messagesLoaded:true};
+    setSessions(previous=>[room,...previous.filter(hasStartedConversation)]);
+    setActiveSessionId(room.id);setHomeView(home);setInput("");setSourceSelection(null);setEditingMsgId(null);
+  }
+  function navigateHistory(open: boolean, saved=false) {
+    window.history.pushState(null, "", open ? saved ? "/saved" : "/history" : "/chat");
+    setHomeView(false);setSavedView(open && saved);setHistoryView(open); setHistoryLimit(20); setSourceSelection(null);
+    closeSidebarOnMobile();
+  }
+  function openConversation(id: string) {
+    setActiveSessionId(id); navigateHistory(false);window.history.replaceState(null,"",`/chat?room=${encodeURIComponent(id)}`); setInput("");
+  }
+  useEffect(() => {
+    setSourceSelection(null);
+    const markRead = () => {
+      if (document.visibilityState !== "visible" || historyView || homeView) return;
+      setSessions(previous => previous.some(room => room.id === activeSessionId && room.unread)
+        ? previous.map(room => room.id === activeSessionId ? {...room, unread: false} : room) : previous);
+    };
+    markRead(); document.addEventListener("visibilitychange", markRead);
+    return () => document.removeEventListener("visibilitychange", markRead);
+  }, [activeSessionId, historyView, homeView, hydrated, setSessions]);
+  const sortedSessions = sessions.filter(hasStartedConversation).sort((a,b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+  const recentSessions = orderSidebarConversations(sortedSessions).slice(0,10);
+  const historyMatches = orderSidebarConversations(sortedSessions).filter(room => !savedView || room.saved);
+  function toggleRoomFlag(id: string, flag: "pinned" | "saved") {
+    setSessions(previous => previous.map(room => room.id === id && hasStartedConversation(room) ? {...room, [flag]: !room[flag]} : room));
+  }
+  function openSavedChats() {navigateHistory(true,true);}
+  function sidebarRoom(room: ChatSession) {
+    return <div key={room.id} className={`session-item ${!homeView && !historyView && room.id === activeSessionId ? "active" : ""} ${room.unread ? "has-unread" : ""}`}>
+      <button className="jst-room-open" onClick={() => openConversation(room.id)} title={room.title}><span>{room.title}</span>
+        {roomStatus(room)}</button>
+      <RoomActions title={room.title} saved={room.saved} pinned={room.pinned}
+        onSave={()=>toggleRoomFlag(room.id,"saved")} onPin={()=>toggleRoomFlag(room.id,"pinned")}
+        onRename={()=>setRenamingChat({id:room.id,title:room.title})}
+        onDelete={()=>deleteSession(room.id)}/>
+    </div>;
+  }
+  function roomStatus(room: ChatSession) {
+    if (room.messages.some(message => message.isStreaming)) return <span className="room-status processing" role="status" aria-label="Sedang memproses" title="Sedang memproses" />;
+    if (room.messagesLoaded === false ? room.lastFailed : room.messages.at(-1)?.failed) return <span className="room-status failed" role="img" aria-label="Jawaban gagal" title="Jawaban gagal">!</span>;
+    if (room.unread) return <span className="room-status unread" role="img" aria-label="Jawaban baru belum dilihat" title="Jawaban baru belum dilihat" />;
+    return null;
+  }
   const [input, setInput] = useState<string>("");
+  const [chatWaitSeconds,setChatWaitSeconds]=useState(0);
+  useEffect(()=>{
+    const update=()=>setChatWaitSeconds(Math.ceil(getChatWaitMs()/1000));
+    update();const timer=setInterval(update,1000);
+    window.addEventListener('jst-api-cooldown',update);window.addEventListener('storage',update);
+    return()=>{clearInterval(timer);window.removeEventListener('jst-api-cooldown',update);window.removeEventListener('storage',update);};
+  },[]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string>("");
 
@@ -464,12 +564,13 @@ export default function TaxAssistantView() {
         if (cmdOpen) setCmdOpen(false);
         else if (themeMenuOpen) setThemeMenuOpen(false);
         else if (editingMsgId) setEditingMsgId(null);
+        else if (sourceSelection) setSourceSelection(null);
         else if (isGenerating) stopGeneration();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cmdOpen, themeMenuOpen, editingMsgId, isGenerating]);
+  }, [cmdOpen, themeMenuOpen, editingMsgId, isGenerating, sourceSelection]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -524,56 +625,16 @@ export default function TaxAssistantView() {
     setTimeout(() => textareaRef.current?.focus(), 40);
   }
 
-  function createNewChat(themeOverride?: TaxThemeCode) {
-    if (isGenerating) stopGeneration();
-
-    const now = Date.now();
-    if (now - lastNewChatAtRef.current < 400) {
-      return;
-    }
-    lastNewChatAtRef.current = now;
-
-    const targetTheme = themeOverride || currentTheme;
-
-    if (activeSession.messages.length === 0) {
-      if (themeOverride && activeSession.theme !== themeOverride) {
-        switchTheme(themeOverride);
-      }
-      setInput("");
-      closeSidebarOnMobile();
-      setTimeout(() => textareaRef.current?.focus(), 50);
-      return;
-    }
-
-    const existingEmpty = sessions.find((s) => s.messages.length === 0);
-    if (existingEmpty) {
-      setActiveSessionId(existingEmpty.id);
-      if (themeOverride && existingEmpty.theme !== themeOverride) {
-        switchTheme(themeOverride);
-      }
-      setInput("");
-      closeSidebarOnMobile();
-      setTimeout(() => textareaRef.current?.focus(), 50);
-      return;
-    }
-
-    const newId = `session-${now}`;
-    const newSession: ChatSession = {
-      id: newId,
-      title: "Percakapan Baru",
-      theme: targetTheme,
-      updatedAt: now,
-      messages: [],
-    };
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newId);
-    setInput("");
-    closeSidebarOnMobile();
-    setTimeout(() => textareaRef.current?.focus(), 60);
+  function createNewChat(themeOverride?:TaxThemeCode){
+    const now=Date.now();if(now-lastNewChatAtRef.current<400)return;lastNewChatAtRef.current=now;
+    window.history.pushState(null,"","/");setHistoryView(false);setSavedView(false);openBlankScreen(true);
+    if(themeOverride)setSessions(previous=>previous.map(room=>!hasStartedConversation(room)?{...room,theme:themeOverride}:room));
+    closeSidebarOnMobile();setTimeout(()=>textareaRef.current?.focus(),50);
   }
 
-  function deleteSession(id: string, e: React.MouseEvent) {
-    e.stopPropagation();
+  function deleteSession(id: string, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    if (generatingSessionRef.current === id) { showToastMessage("Hentikan jawaban sebelum menghapus percakapan ini."); return; }
     const target = sessions.find((s) => s.id === id);
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== id);
@@ -607,19 +668,19 @@ export default function TaxAssistantView() {
   }
 
   function stopGeneration() {
+    const owner = generatingSessionRef.current;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setIsGenerating(false);
     setSessions((prev) =>
       prev.map((s) =>
-        s.id === activeSessionId
+        s.id === owner
           ? {
               ...s,
               messages: s.messages.map((m) =>
                 m.isStreaming
-                  ? { ...m, isStreaming: false, statusText: undefined }
+                  ? { ...m, content: m.content.trim() ? m.content + "\n\nRespons dihentikan oleh pengguna." : "Respons dihentikan oleh pengguna.", isStreaming: false, statusText: undefined }
                   : m
               ),
             }
@@ -633,8 +694,12 @@ export default function TaxAssistantView() {
     themeOverride?: TaxThemeCode
   ) {
     const query = (promptText ?? input).trim();
-    if (!query || isGenerating) return;
+    if (!query || isGenerating || generatingSessionRef.current || activeSession.messagesLoaded === false) return;
+    const wait=getChatWaitMs();if(wait>0){showToastMessage(`Tunggu ${Math.ceil(wait/1000)} detik sebelum mengirim pesan lagi.`);return;}
 
+    if(homeView || !hasStartedConversation(activeSession)){
+      setHomeView(false);window.history.pushState(null,"",`/chat?room=${encodeURIComponent(activeSessionId)}`);
+    }
     const effectiveTheme = themeOverride || currentTheme;
     userScrolledUpRef.current = false;
     setShowScrollBottom(false);
@@ -655,6 +720,7 @@ export default function TaxAssistantView() {
     };
 
     const historyForApi = activeSession.messages
+      .filter((m) => m.content.trim() && !m.isStreaming && !m.failed)
       .slice(-6)
       .map((m) => ({ role: m.role, content: m.content }));
 
@@ -680,6 +746,8 @@ export default function TaxAssistantView() {
     }
 
     setIsGenerating(true);
+    generatingSessionRef.current = activeSessionId;
+    let completed = false;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -698,7 +766,7 @@ export default function TaxAssistantView() {
       });
 
       if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(response.status >= 500 ? "Layanan sedang sibuk. Coba lagi sebentar." : `Permintaan belum berhasil (HTTP ${response.status}).`);
       }
 
       const reader = response.body.getReader();
@@ -725,11 +793,13 @@ export default function TaxAssistantView() {
           if (evt.type === "error") {
             throw new Error(evt.text || "Model lokal tidak dapat dihubungi.");
           }
+          if (evt.type === "done") completed = true;
           setSessions((prev) =>
             prev.map((s) => {
               if (s.id !== activeSessionId) return s;
               return {
                 ...s,
+                ...(evt.type === "done" ? {updatedAt: Date.now(), unread: activeViewRef.current.id !== s.id || activeViewRef.current.history || document.visibilityState !== "visible"} : {}),
                 messages: s.messages.map((m) => {
                   if (m.id !== assistantMsgId) return m;
                   if (evt.type === "status") {
@@ -777,6 +847,7 @@ export default function TaxAssistantView() {
           );
         }
       }
+      if (!completed) throw new Error("Jawaban terhenti sebelum selesai. Silakan coba lagi.");
     } catch (err: any) {
       if (err?.name !== "AbortError") {
         setSessions((prev) =>
@@ -788,11 +859,12 @@ export default function TaxAssistantView() {
                     m.id === assistantMsgId
                       ? {
                           ...m,
+                          failed: true,
                           isStreaming: false,
                           statusText: undefined,
                           content:
                             m.content ||
-                            `Koneksi ke layanan AI lokal sedang terputus (${err?.message || err}). Pastikan server backend aktif lalu klik Ulangi.`,
+                            (err instanceof ApiRequestLimitError ? err.message : err instanceof TypeError ? "Belum dapat terhubung ke server. Periksa koneksi lalu coba lagi." : err?.message || "Jawaban belum dapat diselesaikan. Coba lagi."),
                         }
                       : m
                   ),
@@ -802,6 +874,9 @@ export default function TaxAssistantView() {
         );
       }
     } finally {
+      setSessions(previous => previous.map(room => room.id === activeSessionId
+        ? {...room, messages: room.messages.map(message => message.id === assistantMsgId ? {...message, content: message.content.trim() ? message.content : controller.signal.aborted ? "Respons dihentikan oleh pengguna." : "Jawaban belum tersedia. Silakan coba lagi.", isStreaming: false, statusText: undefined} : message)} : room));
+      generatingSessionRef.current = null;
       setIsGenerating(false);
       abortControllerRef.current = null;
     }
@@ -878,16 +953,31 @@ export default function TaxAssistantView() {
 
   useEffect(() => () => abortControllerRef.current?.abort(), []);
 
-  const isChatEmpty = activeSession.messages.length === 0;
+  const isChatEmpty = activeSession.messagesLoaded !== false && activeSession.messages.length === 0;
 
-  if (!hydrated) return <main className="auth-screen"><section className="auth-card">
-    <h1>{loadError ? 'Riwayat belum dapat dimuat' : 'Memuat percakapan…'}</h1>
+  if (!hydrated) return <main className="auth-screen"><section className={loadError ? "auth-card" : "jst-loading-shell"}>
+    {loadError ? <h1>Riwayat belum dapat dimuat</h1> : <span className="jst-page-loader" role="status" aria-label="Memuat percakapan"/>}
     {loadError && <><p>Periksa koneksi lalu muat ulang. Riwayat di server tidak akan ditimpa.</p><button className="auth-google-button" onClick={() => window.location.reload()}>Muat ulang</button></>}
   </section></main>;
 
 
   return (
-    <div className="app-layout" data-chat-theme={appearance}>
+    <div className="app-layout" data-chat-theme={appearance}
+      onDragOver={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (Array.from(event.dataTransfer.types).includes("Files")) {
+          event.preventDefault();
+          showToastMessage("Chat hanya menerima teks. Upload dokumen tersedia di dashboard developer.");
+        }
+      }}
+      onPaste={(event) => {
+        if (Array.from(event.clipboardData.items).some(item => item.kind === "file")) {
+          event.preventDefault();
+          showToastMessage("Lampiran tidak didukung di chat. Silakan tulis pertanyaan dalam teks.");
+        }
+      }}>
 <div className="history-sync-status" role="status">{syncStatus}<button type="button" onClick={() => { void flush().catch(() => {}); }}>Simpan</button></div>
       {renamingChat && <RenameChatDialog key={renamingChat.id} title={renamingChat.title}
         onCancel={() => setRenamingChat(null)} onSave={name => {
@@ -909,160 +999,32 @@ export default function TaxAssistantView() {
         className={`sidebar-shell ${
           sidebarOpen ? "sidebar-open" : "sidebar-closed"
         }`}
+        style={{"--jst-sidebar-width":`${sidebarWidth}px`} as React.CSSProperties}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "10px",
-            minWidth: "240px",
-          }}
-        >
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="icon-btn"
-            title="Tutup Sidebar (⌘B)"
-          >
-            <SidebarSimpleIcon size={19} weight="regular" aria-hidden="true" />
-          </button>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-            <button
-              onClick={() => {
-                setCmdOpen(true);
-                setCmdQuery("");
-              }}
-              className="icon-btn"
-              title="Cari Percakapan & Tema Pajak (⌘K)"
-            >
-              <MagnifyingGlassIcon size={18} weight="regular" aria-hidden="true" />
-            </button>
-
-            <button
-              onClick={() => createNewChat()}
-              className="icon-btn"
-              title="Percakapan Baru"
-            >
-              <NotePencilIcon size={19} weight="regular" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-
-        <div
-          onClick={() => {
-            closeSidebarOnMobile();
-            setTimeout(() => textareaRef.current?.focus(), 40);
-          }}
-          className="session-item active"
-          style={{
-            marginBottom: "14px",
-            minWidth: "240px",
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "26px",
-                height: "26px",
-                borderRadius: "999px",
-                background: "var(--bg-raised)",
-                border: "1px solid rgba(var(--chat-ink), 0.12)",
-                color: "var(--text-primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <ThemeIcon code={currentTheme} color={themeConfig.iconColor} />
-            </div>
-            <span>Pajak Daerah DKI Jakarta</span>
-          </div>
-        </div>
-
-        <div
-          style={{
-            fontSize: "11.5px",
-            fontWeight: 600,
-            color: "var(--text-muted)",
-            padding: "4px 10px 6px",
-            minWidth: "240px",
-          }}
-        >
-          Riwayat Percakapan
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: "2px",
-            minWidth: "240px",
-          }}
-        >
-          {sessions.map((s) => {
-            const active = s.id === activeSessionId;
-            return (
-              <div
-                key={s.id}
-                onClick={() => {
-                  setActiveSessionId(s.id);
-                  closeSidebarOnMobile();
-                }}
-                className={`session-item ${active ? "active" : ""}`}
-              >
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                  }}
-                >
-                  {s.title}
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "var(--text-muted)",
-                    fontWeight: 500,
-                  }}
-                >
-                  {s.theme}
-                </span>
-                <button type="button" className="rename-session-btn"
-                  title="Ganti nama percakapan" aria-label={`Ganti nama percakapan: ${s.title}`}
-                  onClick={event => { event.stopPropagation(); setRenamingChat({ id: s.id, title: s.title }); }}>
-                  <PencilSimpleIcon size={14} aria-hidden="true" />
-                </button>
-                {sessions.length > 1 && (
-                  <button
-                    onClick={(e) => deleteSession(s.id, e)}
-                    className="delete-btn"
-                    title="Hapus percakapan"
-                  >
-                    <XIcon size={12} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
+        <PanelResizeHandle label="Atur lebar sidebar" value={sidebarWidth} min={220} max={420} edge="right" onChange={setSidebarWidth}/>
+        <div className="jst-sidebar-brand"><strong>Jakarta SmartTax</strong><button className="icon-btn" title="Tutup sidebar" aria-label="Tutup sidebar" onClick={() => setSidebarOpen(false)}><SidebarSimpleIcon size={19}/></button></div>
+        <button className="jst-nav-button" onClick={() => createNewChat()}><NotePencilIcon size={18}/>Chat baru</button>
+        <button className="jst-nav-button" onClick={() => {setCmdQuery("");setCmdOpen(true);}}><MagnifyingGlassIcon size={18}/>Cari percakapan</button>
+        <button className="jst-nav-button" onClick={openSavedChats}><BookmarkSimpleIcon size={18} weight="regular"/>Disimpan</button>
+        <nav className="jst-recent-list" aria-label="Percakapan terbaru">
+          <div className="jst-sidebar-label">Terbaru</div>
+          {recentSessions.map(sidebarRoom)}
+          {!sortedSessions.length && <p className="jst-sidebar-empty">Percakapanmu akan muncul di sini setelah mengirim pesan.</p>}
+        </nav>
+        <button className="jst-nav-button view-all" onClick={() => {navigateHistory(true);}}>Lihat semua<ArrowRightIcon size={16}/></button>
         <div
           style={{
             borderTop: "1px solid rgba(var(--chat-ink), 0.06)",
             paddingTop: "10px",
             marginTop: "8px",
-            minWidth: "240px",
+            minWidth: "0",
           }}
         >
-          <AccountMenu />
+          <div className="jst-account-theme"><AccountMenu />          <button type="button" className="chat-appearance-toggle" onClick={toggleAppearance}
+            aria-label={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}
+            title={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}>
+            {appearance === "dark" ? <SunIcon size={17} aria-hidden="true" /> : <MoonIcon size={17} aria-hidden="true" />}
+          </button></div>
         </div>
       </aside>
 
@@ -1077,7 +1039,7 @@ export default function TaxAssistantView() {
                   className="icon-btn"
                   title="Buka Sidebar (⌘B)"
                 >
-                  <SidebarSimpleIcon size={19} weight="regular" aria-hidden="true" />
+                  <SidebarSimpleIcon size={19} weight="regular" aria-hidden="true" />{sessions.some(room => room.unread) && <span className="sidebar-unread-badge" aria-label="Ada jawaban baru"/>}
                 </button>
                 <button
                   onClick={() => createNewChat()}
@@ -1092,13 +1054,26 @@ export default function TaxAssistantView() {
 
           </div>
 
-          <button type="button" className="chat-appearance-toggle" onClick={toggleAppearance}
-            aria-label={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}
-            title={appearance === "dark" ? "Aktifkan mode terang" : "Aktifkan mode gelap"}>
-            {appearance === "dark" ? <SunIcon size={17} aria-hidden="true" /> : <MoonIcon size={17} aria-hidden="true" />}
-          </button>
+          <h1 className="jst-header-title" title={homeView ? "Jakarta SmartTax" : historyView ? savedView ? "Disimpan" : "Semua percakapan" : activeSession.title}>{homeView ? "Jakarta SmartTax" : historyView ? savedView ? "Disimpan" : "Semua percakapan" : isChatEmpty ? "Chat baru" : activeSession.title}</h1>
+          <div className="jst-header-actions">
+          <button className="jst-share-button" disabled aria-label="Bagikan"><ShareNetworkIcon size={15}/>Bagikan</button>
+</div>
         </header>
 
+        {historyView && <section className="jst-history-page" aria-label={savedView ? "Percakapan disimpan" : "Semua percakapan"}>
+          <div className="jst-history-heading"><div><h2>{savedView ? "Disimpan" : "Semua percakapan"}</h2><p>{savedView ? "Percakapan yang kamu tandai untuk dibaca kembali." : "Temukan kembali pembahasan yang ingin dilanjutkan."}</p></div><button className="jst-nav-button" onClick={() => createNewChat()}><NotePencilIcon size={18}/>Chat baru</button></div>
+          <p className="jst-history-count">{historyMatches.length} percakapan</p>
+          {!historyMatches.length && <p className="jst-history-empty">{savedView ? "Belum ada percakapan yang disimpan." : "Belum ada percakapan. Mulai chat baru untuk berdiskusi."}</p>}
+          {historyMatches.slice(0,historyLimit).map(room => <article className="jst-history-row" key={room.id}>
+            <button className="jst-history-open" onClick={() => openConversation(room.id)}><span className="jst-history-row-title">{room.title}{roomStatus(room)}</span><span className="jst-history-preview">{room.messages.filter(message => message.role === "user").at(-1)?.content || room.preview || "Belum ada pesan"}</span><time>{new Date(room.updatedAt).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</time></button>
+            <div className="jst-history-row-actions"><button className={`icon-btn jst-flag-button ${room.saved ? "is-saved" : ""}`} title={room.saved ? "Hapus dari Disimpan" : "Simpan percakapan"} aria-label={`${room.saved ? "Batal simpan" : "Simpan"} ${room.title}`} aria-pressed={!!room.saved} onClick={() => toggleRoomFlag(room.id,"saved")}><BookmarkSimpleIcon size={17} weight={room.saved ? "fill" : "regular"}/></button>
+            <button className={`icon-btn jst-flag-button ${room.pinned ? "is-pinned" : ""}`} title={room.pinned ? "Lepas sematan" : "Sematkan percakapan"} aria-label={`${room.pinned ? "Lepas sematan" : "Sematkan"} ${room.title}`} aria-pressed={!!room.pinned} onClick={() => toggleRoomFlag(room.id,"pinned")}><PushPinIcon size={17} weight={room.pinned ? "fill" : "regular"}/></button>
+            <button className="icon-btn" title="Ganti nama" aria-label={`Ganti nama ${room.title}`} onClick={() => setRenamingChat({id:room.id,title:room.title})}><PencilSimpleIcon size={17}/></button>
+            <button className="icon-btn" title="Hapus" aria-label={`Hapus ${room.title}`} onClick={event => deleteSession(room.id,event)}><XIcon size={17}/></button></div>
+          </article>)}
+          {historyMatches.length > historyLimit && <button className="jst-load-more" onClick={() => setHistoryLimit(limit => limit + 20)}>Tampilkan 20 berikutnya</button>}
+        </section>}
+        <div hidden={historyView} className="jst-conversation-body">
         <div
           ref={scrollContainerRef}
           onScroll={handleScrollArea}
@@ -1110,7 +1085,7 @@ export default function TaxAssistantView() {
             flexDirection: "column",
           }}
         >
-          {isChatEmpty ? (
+          {activeSession.messagesLoaded === false ? <div className="jst-history-empty" role="status" style={{padding:32,textAlign:"center"}}>{roomLoadError || <span className="jst-page-loader" role="status" aria-label="Memuat percakapan"/>}{roomLoadError && <button className="jst-load-more" onClick={retryRoomLoad}>Coba lagi</button>}</div> : isChatEmpty ? (
             <div className="empty-hero">
               <h2 className="hero-title">{themeConfig.greeting}</h2>
               <p className="hero-subtitle">{activeModeInfo.description}</p>
@@ -1128,48 +1103,6 @@ export default function TaxAssistantView() {
                     >
                       <ThemeIcon code={code} color={t.iconColor} />
                       <span>{t.shortLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div
-                style={{
-                  display: "inline-flex",
-                  flexWrap: "wrap",
-                  justifyContent: "center",
-                  gap: "6px",
-                  padding: "4px",
-                  borderRadius: "999px",
-                  background: "rgba(var(--chat-ink), 0.04)",
-                  border: "1px solid rgba(var(--chat-ink), 0.08)",
-                  marginBottom: "18px",
-                }}
-              >
-                {CAPABILITY_MODES.map((mode) => {
-                  const isActive = capabilityMode === mode.code;
-                  return (
-                    <button
-                      key={mode.code}
-                      type="button"
-                      onClick={() => {
-                        setCapabilityMode(mode.code);
-                      }}
-                      style={{
-                        border: "none",
-                        borderRadius: "999px",
-                        padding: "6px 13px",
-                        fontSize: "12.5px",
-                        fontWeight: isActive ? 600 : 400,
-                        background: isActive
-                          ? "rgba(var(--chat-ink), 0.13)"
-                          : "transparent",
-                        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-                        cursor: "pointer",
-                        transition: "all 0.16s ease",
-                      }}
-                    >
-                      {mode.shortLabel}
                     </button>
                   );
                 })}
@@ -1416,13 +1349,14 @@ export default function TaxAssistantView() {
                           </details>
                         )}
 
+                        <div onClick={event => { const marker = (event.target as HTMLElement).closest("[data-citation]"); if (marker && m.references?.some(reference => reference.number === Number(marker.getAttribute("data-citation")))) {closeSidebarOnMobile();setSourceSelection({messageId:m.id,number:Number(marker.getAttribute("data-citation"))});}}}>
                         <FormattedMarkdown
                           content={m.content}
-                          isStreaming={m.isStreaming}
+                          isStreaming={m.isStreaming && !m.statusText}
                           onCopyCode={handleCopyInlineCode}
-                        />
+                        /></div>
 
-                        {!m.isStreaming && <AnswerReferences references={m.references} />}
+                        {!m.isStreaming && !!m.references?.length && <button className="jst-sources-trigger" onClick={() => {closeSidebarOnMobile();setSourceSelection({messageId:m.id});}}><FileTextIcon size={15}/>Sumber · {new Set(m.references.map(reference => reference.document_name)).size}</button>}
 
                         {!m.isStreaming &&
                           m.suggestedTheme &&
@@ -1481,6 +1415,7 @@ export default function TaxAssistantView() {
                             {idx === activeSession.messages.length - 1 && (
                               <button
                                 onClick={regenerateLastResponse}
+                                disabled={isGenerating || chatWaitSeconds > 0}
                                 className="action-bar-btn"
                                 title="Ulangi jawaban"
                               >
@@ -1489,7 +1424,7 @@ export default function TaxAssistantView() {
                               </button>
                             )}
 
-                            {m.durationMs && (
+                            {typeof m.durationMs === "number" && m.durationMs > 0 && (
                               <span
                                 style={{
                                   fontSize: "11.5px",
@@ -1570,6 +1505,7 @@ export default function TaxAssistantView() {
 
         {/* Bottom Composer */}
         <div className="composer-wrapper">
+          {chatWaitSeconds > 0 && !isGenerating && <p className="jst-chat-cooldown" role="status">Pesan berikutnya bisa dikirim dalam {chatWaitSeconds} detik.</p>}
           <div className="composer-shell">
             <textarea
               ref={textareaRef}
@@ -1588,7 +1524,7 @@ export default function TaxAssistantView() {
                   }
                 }
               }}
-              disabled={isGenerating}
+              disabled={isGenerating || activeSession.messagesLoaded === false}
               placeholder={
                 isGenerating
                   ? "Jakarta SmartTax sedang menelaah & merumuskan jawaban..."
@@ -1747,10 +1683,10 @@ export default function TaxAssistantView() {
               ) : (
                 <button
                   type="button"
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || chatWaitSeconds > 0 || activeSession.messagesLoaded === false}
                   onClick={() => sendPrompt()}
                   className={`send-btn ${input.trim() ? "ready" : "disabled"}`}
-                  title="Kirim pesan (Enter)"
+                  title={chatWaitSeconds > 0 ? `Tunggu ${chatWaitSeconds} detik` : "Kirim pesan (Enter)"}
                 >
                   <ArrowUpIcon size={18} weight="bold" aria-hidden="true" />
                 </button>
@@ -1758,18 +1694,14 @@ export default function TaxAssistantView() {
             </div>
           </div>
 
-          <div
-            style={{
-              textAlign: "center",
-              fontSize: "11px",
-              color: "var(--text-muted)",
-              marginTop: "7px",
-            }}
-          >
-            Jawaban mengacu pada dokumen proyek yang tersedia. Periksa sumber sebelum menggunakan informasinya.
+          <div className="jst-chat-disclaimer">
+            AI dapat membuat kesalahan. Periksa kembali informasi penting dan sumbernya.
           </div>
         </div>
+        </div>
       </div>
+
+      {sourceSelection && !historyView && <SourcePanel key={`${activeSessionId}-${sourceSelection.messageId}`} message={activeSession.messages.find(message => message.id === sourceSelection.messageId)} selectedNumber={sourceSelection.number} onClose={() => setSourceSelection(null)}/>}
 
       {/* Quick Search & Theme Switcher Dialog (Cmd+K) */}
       {cmdOpen && (
@@ -1789,7 +1721,7 @@ export default function TaxAssistantView() {
                 type="text"
                 value={cmdQuery}
                 onChange={(e) => setCmdQuery(e.target.value)}
-                placeholder="Cari riwayat percakapan atau pilih jenis pajak DKI..."
+                placeholder="Cari percakapan atau jenis pajak…"
                 style={{
                   flex: 1,
                   background: "transparent",
@@ -1899,7 +1831,7 @@ export default function TaxAssistantView() {
               >
                 Riwayat Percakapan
               </div>
-              {sessions
+              {sortedSessions
                 .filter(
                   (s) =>
                     !cmdQuery ||
@@ -1910,7 +1842,7 @@ export default function TaxAssistantView() {
                     key={s.id}
                     type="button"
                     onClick={() => {
-                      setActiveSessionId(s.id);
+                      openConversation(s.id);
                       setCmdOpen(false);
                     }}
                     className="model-option"

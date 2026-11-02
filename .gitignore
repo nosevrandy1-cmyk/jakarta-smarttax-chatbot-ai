@@ -46,3 +46,9 @@ Thumbs.db
 
 # Embedded Qdrant knowledge index (runtime data)
 backend/qdrant_knowledge_storage/
+
+# Keep local documentation and evidence out of version control.
+/docs/
+
+# Local startup script.
+/start.sh
