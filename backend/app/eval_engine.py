@@ -141,8 +141,28 @@ class SmartTaxEvaluationEngine:
         self.golden_path = GOLDEN_DATASET_PATH
         self.history_path = INTELLIGENCE_HISTORY_PATH
         self.mirror_history_path = DATA_DIR / "dashboard_intelligence_history.json"
+        self._catalog_paths = (self.golden_path,self.history_path,self.mirror_history_path)
+
+    def _catalog(self):
+        # Explicit alternate paths remain usable for standalone benchmark fixtures.
+        if (self.golden_path,self.history_path,self.mirror_history_path) != self._catalog_paths:
+            return None
+        from .catalog_evaluation import import_once
+        import_once(knowledge_store.archive,self.golden_path,self.history_path)
+        return knowledge_store.archive
+
+    def clear_catalog(self):
+        archive = self._catalog()
+        if archive:
+            with archive.connect() as db:
+                db.execute('DELETE FROM evaluation_snapshots')
+                db.execute('DELETE FROM golden_items')
 
     def load_golden_dataset(self) -> List[Dict[str, Any]]:
+        archive = self._catalog()
+        if archive:
+            with archive.connect() as db:
+                return [json.loads(r[0]) for r in db.execute('SELECT item_json FROM golden_items ORDER BY position')]
         if not self.golden_path.exists():
             return []
         data = json.loads(self.golden_path.read_text(encoding="utf-8"))
@@ -151,6 +171,11 @@ class SmartTaxEvaluationEngine:
         return data
 
     def load_history(self) -> List[Dict[str, Any]]:
+        archive = self._catalog()
+        if archive:
+            from .catalog_evaluation import load_history
+            with archive.connect() as db:
+                return load_history(db)
         # An empty history is authoritative. Reading the dashboard never creates
         # baseline scores or restores a legacy demo snapshot from the mirror.
         if not self.history_path.exists():
@@ -181,6 +206,12 @@ class SmartTaxEvaluationEngine:
             raise ValueError(readiness["reason"])
 
     def _save_history(self, history: List[Dict[str, Any]]) -> None:
+        archive = self._catalog()
+        if archive:
+            from .catalog_evaluation import save_history
+            with archive.connect() as db:
+                save_history(db,history)
+            return
         payload = json.dumps(history, ensure_ascii=False, indent=2)
         self.history_path.write_text(payload, encoding="utf-8")
         DATA_DIR.mkdir(parents=True, exist_ok=True)

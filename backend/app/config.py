@@ -12,7 +12,7 @@ def backend_path(raw_path):
     return (path if path.is_absolute() else BASE_DIR / path).resolve()
 
 
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = backend_path(os.getenv("JST_DATA_DIR", str(BASE_DIR / "data")))
 QDRANT_STORAGE_DIR = backend_path(os.getenv("QDRANT_STORAGE_DIR", str(BASE_DIR / "qdrant_knowledge_storage")))
 QDRANT_KNOWLEDGE_COLLECTION = os.getenv("QDRANT_KNOWLEDGE_COLLECTION", "jakarta_smarttax_knowledge")
 

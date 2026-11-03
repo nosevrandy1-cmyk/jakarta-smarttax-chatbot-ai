@@ -74,6 +74,10 @@ class QdrantRecords:
     def delete(self, ids):
         if ids:self.client.delete(self.name,points_selector=models.PointIdsList(points=[self.point_id(i) for i in ids]),wait=True)
 
+    def clear(self):
+        """Remove all points, including orphaned IDs, without changing vector configuration."""
+        self.client.delete(self.name,points_selector=models.FilterSelector(filter=models.Filter()),wait=True)
+
     def query(self, query_embeddings, n_results, where=None, include=None):
         result={'ids':[],'documents':[],'metadatas':[],'distances':[]}
         for vector in query_embeddings:

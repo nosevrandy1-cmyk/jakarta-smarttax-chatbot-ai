@@ -115,4 +115,4 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(store.session(token)['id'], old_id)
         self.assertEqual(store.consume_flow(state, browser)['intent'], 'login')
         with store.connect() as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 3)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)

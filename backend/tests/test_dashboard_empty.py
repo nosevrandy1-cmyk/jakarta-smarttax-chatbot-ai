@@ -15,6 +15,7 @@ TEST_ROOT = Path(tempfile.mkdtemp(prefix="jst-dashboard-test-"))
 os.environ["QDRANT_STORAGE_DIR"] = str(TEST_ROOT / "qdrant")
 os.environ["QDRANT_KNOWLEDGE_COLLECTION"] = "jst_dashboard_test"
 os.environ["QDRANT_URL"] = ""  # Tests never connect to an external Qdrant server.
+os.environ["JST_DATA_DIR"] = str(TEST_ROOT / "data")
 os.environ["JST_UPLOAD_DIR"] = str(TEST_ROOT / "uploads")
 
 from app import config

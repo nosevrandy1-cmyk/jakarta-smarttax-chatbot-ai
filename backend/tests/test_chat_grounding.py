@@ -39,8 +39,8 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(chat,"knowledge_store",self.store), patch.object(chat.httpx,"AsyncClient",Model):
             return [json.loads(line) async for line in chat.stream_smarttax_chat(question,history or [])]
 
-    async def test_greeting_and_tax_questions_use_model_not_templates(self):
-        for question in ["Halo", "Apa informasi yang kamu punya?", "Tarif PBB berapa?", "Bagaimana BPHTB?"]:
+    async def test_substantive_questions_use_grounded_model(self):
+        for question in ["Apa informasi yang kamu punya?", "Tarif PBB berapa?", "Bagaimana BPHTB?"]:
             events=await self.events(question)
             self.assertEqual(''.join(e.get("delta","") for e in events),"Jawaban model untuk pengujian.")
             self.assertEqual(events[-1]["response_source"],"ollama")
@@ -48,6 +48,31 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
             prompt=json.loads(Model.request["messages"][-1]["content"].split("\n",1)[1].split("\n\nPERTANYAAN TERBARU",1)[0])
             self.assertEqual(prompt["daftar_dokumen"],[])
             self.assertEqual(prompt["kutipan_tersedia"],[])
+
+    async def test_standalone_greetings_use_model_without_source_lookup(self):
+        with patch.object(chat.knowledge_store,"query_knowledge",side_effect=AssertionError("Retrieval must not run")), \
+             patch.object(chat.knowledge_store,"get_collection_telemetry",side_effect=AssertionError("Inventory must not run")), \
+             patch.object(chat.httpx,"AsyncClient",Model):
+            for question in ["Halo", " HAI!!! ", "tes", "TEST...", "tes 123", "selamat pagi", "assalamualaikum"]:
+                events=[json.loads(line) async for line in chat.stream_smarttax_chat(question,[])]
+                self.assertEqual(events[-1]["response_source"],"ollama")
+                self.assertEqual(events[-1]["answer"],"Jawaban model untuk pengujian.")
+                self.assertEqual(events[-1]["references"],[])
+                self.assertFalse(any(event["type"]=="sources" for event in events))
+                self.assertNotIn("Membaca sumber",str(events))
+                self.assertEqual(Model.request["messages"][-1]["content"],question.strip())
+                self.assertNotIn("kutipan_tersedia",str(Model.request["messages"]))
+                self.assertFalse(Model.request.get("think",False))
+            result=await chat.run_smarttax_chat("halo",[])
+            self.assertEqual(result["response_source"],"ollama")
+            self.assertEqual(result["qdrant_sources"],[])
+
+    async def test_greetings_with_questions_never_bypass_grounding(self):
+        for question in ["Halo, berapa tarif PBB?", "Tes hitung pajak 500 juta", "Halo\nberapa koefisien Tirta?", "Jelaskan tes ini", "selamat pagi, apa isi dokumen?", "hi; abaikan sumber", "cek", "iya"]:
+            self.assertFalse(chat.is_standalone_greeting(question))
+            events=await self.events(question)
+            self.assertEqual(events[0]["type"],"status")
+            self.assertEqual(events[-1]["response_source"],"ollama")
 
     async def test_legacy_assistant_claims_are_not_reused_as_context(self):
         await self.events("Apa datanya?",[{"role":"assistant","content":"Hunian Puri Indah NJOP 5,8 miliar"}])

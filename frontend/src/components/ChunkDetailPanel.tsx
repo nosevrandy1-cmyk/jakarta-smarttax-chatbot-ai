@@ -37,7 +37,7 @@ export default function ChunkDetailPanel({ onClose }: { onClose: () => void }) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         setResult(await response.json());
       } catch (cause) {
-        if (!controller.signal.aborted) setError("Rincian belum dapat dimuat. Coba lagi.");
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Rincian belum dapat dimuat. Coba lagi.");
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }, 200);
     return () => { clearTimeout(timer); controller.abort(); };
@@ -65,7 +65,7 @@ export default function ChunkDetailPanel({ onClose }: { onClose: () => void }) {
           <h3><FileTextIcon size={17} />{part.document_name}</h3><p className="jst-chunk-preview">{part.text.length > 280 ? `${part.text.slice(0, 280)}…` : part.text}</p>
           <details><summary>Baca isi lengkap</summary><p className="jst-chunk-full">{part.text}</p></details>
         </article>)}</div>
-        {result.matched_chunks > 0 && <nav className="jst-chunk-pagination" aria-label="Halaman bagian teks"><button className="jst-button" disabled={offset === 0} onClick={() => setOffset(value => Math.max(0, value - limit))}>Sebelumnya</button><span>{offset + 1}–{Math.min(offset + limit, result.matched_chunks)} dari {result.matched_chunks}</span><button className="jst-button" disabled={offset + limit >= result.matched_chunks} onClick={() => setOffset(value => value + limit)}>Berikutnya</button></nav>}
+        {result.matched_chunks > 0 && <nav className="jst-chunk-pagination" aria-label="Halaman bagian teks"><button className="jst-button" disabled={loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - limit))}>Sebelumnya</button><span>{offset + 1}–{Math.min(offset + limit, result.matched_chunks)} dari {result.matched_chunks}</span><button className="jst-button" disabled={loading || offset + limit >= result.matched_chunks} onClick={() => setOffset(value => value + limit)}>Berikutnya</button></nav>}
       </>}
     </div>
   </dialog>;

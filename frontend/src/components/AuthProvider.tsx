@@ -4,9 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { usePathname } from 'next/navigation';
 import { SignOutIcon } from '@phosphor-icons/react/dist/csr/SignOut';
 import { ArrowLeftIcon } from '@phosphor-icons/react/dist/csr/ArrowLeft';
-import { API_BASE, apiFetch, setCsrfToken, flushChatHistory } from '@/lib/api';
+import { API_BASE, apiFetch, ApiRequestLimitError, setCsrfToken, flushChatHistory } from '@/lib/api';
 
-type User = { id: string; email: string; name: string; role: 'user' | 'developer' };
+type User = { local?: boolean; id: string; email: string; name: string; role: 'user' | 'developer' };
 type Session = { configured: boolean; user: User | null; csrf_token: string | null };
 type AuthContextValue = { user: User; logout: () => Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -24,6 +24,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [error, setError] = useState('');
   const [providerError, setProviderError] = useState('');
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const lastAuthClick=useRef(0);
   const userRef = useRef<User | null>(null);
   const requestVersion = useRef(0);
 
@@ -48,7 +49,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setCsrfToken(next.csrf_token);
       setSession(next);
       setError('');
-    } catch {
+    } catch (cause) {
+      if(cause instanceof ApiRequestLimitError){setError(cause.message);setLoading(false);return;}
       if (version === requestVersion.current) {
         setError('Belum dapat terhubung. Coba lagi sebentar.');
         clearSession();
@@ -125,7 +127,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     <p>{authMode === 'register' ? 'Daftarkan akun Google untuk mulai menggunakan chatbot JST. Tidak perlu membuat password baru.' : 'Masuk menggunakan akun Google yang sudah terdaftar di JST.'}</p>
     {(error || providerError) && <p className="auth-feedback" role="alert">{error || providerError}</p>}
     {session && !session.configured && <p className="auth-feedback" role="status">Login Google belum tersedia. Hubungi pengelola JST untuk menyiapkannya.</p>}
-    {session?.configured ? <a className="auth-google-button" href={API_BASE + '/api/auth/google/' + authMode}>{authMode === 'register' ? 'Daftar dengan Google' : 'Masuk dengan Google'}</a>
+    {session?.configured ? <a className="auth-google-button" onClick={event=>{if(Date.now()-lastAuthClick.current<3000){event.preventDefault();return;}lastAuthClick.current=Date.now();}} href={API_BASE + '/api/auth/google/' + authMode}>{authMode === 'register' ? 'Daftar dengan Google' : 'Masuk dengan Google'}</a>
       : <button className="auth-google-button" onClick={() => { setLoading(true); void refresh(); }}>Periksa kembali</button>}
     <p className="auth-switch">{authMode === 'register' ? 'Sudah punya akun? ' : 'Belum punya akun? '}<button type="button" onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setProviderError(''); }}>{authMode === 'register' ? 'Masuk' : 'Daftar'}</button></p>
     <p className="auth-privacy">{authMode === 'register' ? 'JST akan menerima nama, email, dan ID akun Google untuk membuat akun. Pertanyaan dan dokumenmu tidak dikirim ke Google untuk pendaftaran.' : 'Google digunakan untuk memverifikasi identitas akun. Pertanyaan dan dokumenmu tidak dikirim ke Google untuk login.'}</p>
@@ -145,14 +147,13 @@ export function AccountMenu() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return <div className="auth-account">
-    <div className="auth-avatar" aria-hidden="true">{(user.name || user.email).slice(0, 1).toUpperCase()}</div>
-    <div className="auth-account-copy"><strong>{user.name || 'Akun Google'}</strong><span>{user.email}</span></div>
-    <button type="button" className="icon-btn" disabled={busy} title="Keluar akun" aria-label="Keluar akun" onClick={async () => {
+    <div className="auth-avatar" aria-hidden="true">{(user.local ? 'J' : user.name || user.email).slice(0, 1).toUpperCase()}</div>
+    <div className="auth-account-copy"><strong>{user.local ? 'Pengguna JST' : user.name || 'Akun Google'}</strong>{!user.local && <span>{user.email}</span>}</div>
+    {!user.local && <button type="button" className="icon-btn" disabled={busy} title="Keluar akun" aria-label="Keluar akun" onClick={async () => {
       setBusy(true); setError('');
       try { await logout(); } catch { setError('Belum bisa keluar. Coba lagi.'); setBusy(false); }
-    }}><SignOutIcon size={18} aria-hidden="true" /></button>
-    {user.role === 'developer' && <a className="auth-dashboard-link" href="/admin">Buka dashboard developer</a>}
-    <small>Riwayat tersimpan di akun dan tetap tersedia setelah keluar.</small>
+    }}><SignOutIcon size={18} aria-hidden="true" /></button>}
+    {!user.local && <small>Riwayat tersimpan di akun.</small>}
     {error && <small role="alert">{error}</small>}
   </div>;
 }

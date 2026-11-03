@@ -4,7 +4,7 @@ import "./auth.css";
 import AuthProvider from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
-  title: "Jakarta SmartTax 2026 — Sistem Informasi Pajak Daerah DKI",
+  title: "Jakarta SmartTax",
   description:
     "Platform Penelusuran Data Pajak Daerah Provinsi DKI Jakarta oleh Tim AI Jakarta SmartTax 2026",
 };

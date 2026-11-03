@@ -128,3 +128,82 @@ class ChatHistoryTests(unittest.TestCase):
             self.assertEqual((await c.put('/api/history',json=body,headers=self.headers(self.a))).status_code,413)
             self.assertEqual((await c.get('/api/history')).headers['cache-control'],'no-store')
         self.run_async(check)
+
+    def test_unread_and_failed_status_survive_reload_and_remain_account_owned(self):
+        async def check(c):
+            c.cookies.set(SESSION_COOKIE, self.a)
+            body = self.body()
+            body['sessions'][0]['unread'] = True
+            body['sessions'][0]['messages'][-1]['failed'] = True
+            self.assertEqual((await c.put('/api/history', json=body, headers=self.headers(self.a))).status_code, 200)
+            restored = (await c.get('/api/history')).json()
+            self.assertTrue(restored['sessions'][0]['unread'])
+            self.assertTrue(restored['sessions'][0]['messages'][-1]['failed'])
+            restored['sessions'][0]['unread'] = False
+            self.assertEqual((await c.put('/api/history', json=restored, headers=self.headers(self.a))).status_code, 200)
+            self.assertFalse((await c.get('/api/history')).json()['sessions'][0]['unread'])
+            c.cookies.set(SESSION_COOKIE, self.b)
+            self.assertEqual((await c.get('/api/history')).json()['sessions'], [])
+        self.run_async(check)
+
+    def test_index_omits_other_room_messages_and_patch_preserves_them(self):
+        async def check(c):
+            c.cookies.set(SESSION_COOKIE, self.b)
+            body = self.body()
+            body['sessions'].append({**body['sessions'][0], 'id':'older-room', 'messages':[{'id':'old','role':'user','content':'Retain this unopened message'}]})
+            self.assertEqual((await c.put('/api/history', json=body, headers=self.headers(self.b))).status_code, 200)
+            index = (await c.get('/api/history/index')).json()
+            older = index['sessions'][1]
+            self.assertEqual(older['messages'], [])
+            self.assertFalse(older['messagesLoaded'])
+            self.assertEqual(older['preview'], 'Retain this unopened message')
+            self.assertEqual(older['messageCount'], 1)
+            self.assertTrue(index['sessions'][0]['messagesLoaded'])
+            patch = {'revision':index['revision'], 'activeSessionId':body['activeSessionId'], 'sessions':body['sessions']}
+            del patch['sessions'][1]['messages']
+            patch['sessions'][1]['title']='Renamed without loading'
+            self.assertEqual((await c.patch('/api/history',json=patch,headers=self.headers(self.b))).status_code,200)
+            room = await c.get('/api/history/rooms/older-room')
+            self.assertEqual(room.status_code,200)
+            self.assertEqual(room.json()['session']['messages'][0]['content'],'Retain this unopened message')
+            self.assertEqual(room.json()['session']['title'],'Renamed without loading')
+            self.assertEqual((await c.patch('/api/history',json=patch,headers=self.headers(self.b))).status_code,409)
+            c.cookies.set(SESSION_COOKIE, self.a)
+            self.assertEqual((await c.get('/api/history/rooms/older-room')).status_code,404)
+            self.assertEqual((await c.get('/api/history/index')).json()['sessions'],[])
+        self.run_async(check)
+
+    def test_partial_history_cannot_create_room_without_messages_or_bypass_csrf(self):
+        async def check(c):
+            c.cookies.set(SESSION_COOKIE,self.b)
+            body=self.body()
+            del body['sessions'][0]['messages']
+            self.assertEqual((await c.patch('/api/history',json=body,headers=self.headers(self.b))).status_code,422)
+            headers=self.headers(self.b);headers.pop('X-CSRF-Token')
+            self.assertEqual((await c.patch('/api/history',json=self.body(),headers=headers)).status_code,403)
+            self.assertEqual((await c.get('/api/history')).json()['sessions'],[])
+        self.run_async(check)
+
+    def test_saved_and_pinned_flags_persist_without_loading_messages(self):
+        async def check(c):
+            c.cookies.set(SESSION_COOKIE,self.b)
+            body=self.body()
+            self.assertEqual((await c.put('/api/history',json=body,headers=self.headers(self.b))).status_code,200)
+            body['revision']=1
+            room=body['sessions'][0]
+            room['saved']=True;room['pinned']=True
+            del room['messages']
+            self.assertEqual((await c.patch('/api/history',json=body,headers=self.headers(self.b))).status_code,200)
+            index=(await c.get('/api/history/index')).json()
+            self.assertTrue(index['sessions'][0]['saved'])
+            self.assertTrue(index['sessions'][0]['pinned'])
+            detail=(await c.get('/api/history/rooms/same-conversation-id')).json()['session']
+            self.assertEqual(len(detail['messages']),2)
+            body['revision']=2;room['saved']=False;room['pinned']=False
+            self.assertEqual((await c.patch('/api/history',json=body,headers=self.headers(self.b))).status_code,200)
+            detail=(await c.get('/api/history')).json()['sessions'][0]
+            self.assertFalse(detail['saved']);self.assertFalse(detail['pinned'])
+            c.cookies.set(SESSION_COOKIE,self.a)
+            self.assertEqual((await c.get('/api/history/index')).json()['sessions'],[])
+            self.assertEqual((await c.get('/api/history/rooms/same-conversation-id')).status_code,404)
+        self.run_async(check)

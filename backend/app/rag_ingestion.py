@@ -96,7 +96,7 @@ def format_reasoning_block(payload: LearnReasoningPayload) -> str:
         f"[REFERENSI PENALARAN KASUS PAJAK - Topik: {payload.topik_pajak}]\n"
         f"Kasus / Pertanyaan: {payload.pertanyaan_kasus.strip()}\n"
         f"Alur Penalaran & Dasar Hukum: {payload.alur_penalaran.strip()}\n"
-        f"Kesimpulan / Solusi Resmi: {payload.jawaban_final.strip()}"
+        f"Kesimpulan / Jawaban kasus: {payload.jawaban_final.strip()}"
     )
 
 
@@ -368,9 +368,15 @@ class SmartTaxKnowledgeStore:
         metas_list = (res.get("metadatas") or [[]])[0]
         dists_list = (res.get("distances") or [[]])[0]
 
+        tax_code = domain.upper() if domain and domain.upper() in TAX_DOMAINS else tema_pajak.upper() if tema_pajak and tema_pajak.upper() in TAX_THEMES else None
+        tax_code = 'PBB-P2' if tax_code == 'JPB' else tax_code
+        valid = self.archive.validated_records(ids_list, tax_code)
         results: List[RetrievalResult] = []
         for cid, doc_text, meta, dist in zip(ids_list, docs_list, metas_list, dists_list):
-            meta_dict = meta or {}
+            if str(cid) not in valid:
+                continue
+            doc_text = valid[str(cid)]['text']
+            meta_dict = valid[str(cid)]['metadata']
             cosine_dist = float(dist) if dist is not None else 0.5
             sim = max(0.0, min(1.0, 1.0 - cosine_dist))
             results.append(

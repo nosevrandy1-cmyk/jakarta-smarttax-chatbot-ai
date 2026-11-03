@@ -113,7 +113,7 @@ class AuthHardeningTests(unittest.TestCase):
             row=db.execute("SELECT * FROM auth_users WHERE id='keep-id'").fetchone()
             self.assertEqual(row['subject'],'old-sub')
             self.assertEqual(row['google_authoritative'],0)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],3)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],4)
 
     def test_allowlist_revocation_and_developer_removal_apply_to_existing_sessions(self):
         token=self.seed_session({**self.claims,'email':'developer@example.test','hd':'example.test'})

@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -19,6 +20,7 @@ from .embedder import embedder
 from .eval_engine import eval_engine
 from .ollama_service import (
     CAPABILITY_MODES,
+    chat_context_policy,
     run_smarttax_chat,
     stream_smarttax_chat,
 )
@@ -29,22 +31,23 @@ from .rag_ingestion import (
 from .tax_db import (
     TAX_THEMES,
     get_all_legal_corpus,
-    get_all_sppt_records,
-    get_regulasi_chunks,
     init_tax_db,
 )
 
 from .auth import install_auth
 from .chat_history import install_history
+from .room_memory import install_room_memory, continuation_context
 from .source_routes import install_source_routes
+from .maintenance import install_maintenance
+from .config import BASE_DIR
+from .chat_models import ChatRequestInput
+from .context_budget import room_fits
 
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_all_sppt_records()
-    get_all_legal_corpus()
     eval_engine.load_history()
     try:
         yield
@@ -61,13 +64,15 @@ app = FastAPI(
 
 install_auth_settings, _auth_store = install_auth(app)
 install_history(app, _auth_store)
+install_room_memory(app, _auth_store)
 install_source_routes(app, knowledge_store, embedder)
+install_maintenance(app, knowledge_store, eval_engine, BASE_DIR / ".runtime-backups")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[install_auth_settings.public_url],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-CSRF-Token", "X-JST-Account-ID"],
 )
 
@@ -80,19 +85,6 @@ async def security_headers_middleware(request: Request, call_next) -> Response:
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     return response
-
-
-class ChatMessageInput(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str = Field(..., min_length=1, max_length=8000)
-
-
-class ChatRequestInput(BaseModel):
-    message: str = Field(..., min_length=1, max_length=2000)
-    history: List[ChatMessageInput] = Field(default_factory=list, max_length=20)
-    model: Optional[str] = Field(default=DEFAULT_CHAT_MODEL, max_length=80)
-    tema_pajak: Optional[str] = Field(default="PBB-P2", max_length=20)
-    mode_kapabilitas: Optional[str] = Field(default="konsultasi", max_length=32)
 
 
 class EvaluateRequestInput(BaseModel):
@@ -117,15 +109,13 @@ async def health_check(request: Request) -> Dict[str, Any]:
         ollama_running = False
 
     if not install_auth_settings.is_developer(request.state.auth_user):
-        return {"status": "ok", "ollama": {"running": ollama_running,
+        return {"status": "ok", "context_policy": chat_context_policy(), "ollama": {"running": ollama_running,
             "default_model": DEFAULT_CHAT_MODEL, "installed_local_models": local_models}}
-    sppt_rows = get_all_sppt_records()
-    reg_chunks = get_regulasi_chunks()
-    legal_rows = get_all_legal_corpus()
     knowledge_telemetry = knowledge_store.get_collection_telemetry()
 
     return {
         "status": "ok",
+        "context_policy": chat_context_policy(),
         "service": "Jakarta SmartTax 2026",
         "team": "Tim AI Jakarta SmartTax 2026",
         "region": "Provinsi DKI Jakarta",
@@ -335,8 +325,22 @@ async def demo_data_disabled_endpoint() -> Dict[str, Any]:
     raise HTTPException(status_code=410, detail="Data contoh dinonaktifkan. Gunakan sumber data resmi.")
 
 
+def check_room_context(req: ChatRequestInput, request: Request):
+    # Read only the authenticated owner's snapshot, never a global room lookup.
+    messages = [{"role": m.role, "content": m.content} for m in req.history]
+    if req.room_id:
+        room = _auth_store.history.room(request.state.auth_user['id'], req.room_id)
+        if room:
+            messages = [m for m in room.get('messages', []) if not m.get('failed')]
+    policy = chat_context_policy()
+    if not room_fits(messages, req.message, policy):
+        raise HTTPException(status_code=409, detail={"code":"room_context_limit",
+            "message":"Konteks percakapan ini sudah penuh. Lanjutkan di chat baru.", "context_policy":policy})
+
+
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatRequestInput, request: Request) -> Dict[str, Any]:
+    check_room_context(req, request)
     clean_msg = req.message.strip()
     if not clean_msg:
         raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong.")
@@ -345,9 +349,11 @@ async def chat_endpoint(req: ChatRequestInput, request: Request) -> Dict[str, An
         tema = "PBB-P2"
     mode_kap = (req.mode_kapabilitas or "konsultasi").lower()
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
+    memory = continuation_context(_auth_store, request.state.auth_user["id"], req.room_id)
     return await run_smarttax_chat(
         user_message=clean_msg,
         history=history_dicts,
+        memory=memory,
         model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,
         tema_pajak=tema,
         mode_kapabilitas=mode_kap,
@@ -356,6 +362,7 @@ async def chat_endpoint(req: ChatRequestInput, request: Request) -> Dict[str, An
 
 @app.post("/api/chat/stream")
 async def chat_stream_endpoint(req: ChatRequestInput, request: Request) -> StreamingResponse:
+    check_room_context(req, request)
     clean_msg = req.message.strip()
     if not clean_msg:
         raise HTTPException(status_code=400, detail="Pesan tidak boleh kosong.")
@@ -364,10 +371,12 @@ async def chat_stream_endpoint(req: ChatRequestInput, request: Request) -> Strea
         tema = "PBB-P2"
     mode_kap = (req.mode_kapabilitas or "konsultasi").lower()
     history_dicts = [{"role": m.role, "content": m.content} for m in req.history]
+    memory = continuation_context(_auth_store, request.state.auth_user["id"], req.room_id)
     return StreamingResponse(
         stream_smarttax_chat(
             user_message=clean_msg,
             history=history_dicts,
+            memory=memory,
             model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,
             tema_pajak=tema,
             mode_kapabilitas=mode_kap,

@@ -46,3 +46,17 @@ Thumbs.db
 
 # Embedded Qdrant knowledge index (runtime data)
 backend/qdrant_knowledge_storage/
+
+# Local documentation and runtime artifacts
+/docs/
+/start.sh
+backend/.runtime-backups/
+.build-verification/
+backend/dashboard_intelligence_history.json
+backend/data/dashboard_intelligence_history.json
+
+.migration-backups/
+backend/data/*.sqlite-wal
+backend/data/*.sqlite-shm
+
+/backend/database_design/
