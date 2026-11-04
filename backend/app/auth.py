@@ -46,6 +46,10 @@ def digest(value: str) -> str:
 def emails(value: str) -> frozenset[str]:
     return frozenset(v.strip().casefold() for v in value.split(',') if v.strip())
 
+def _account_database_path():
+    from .config import DATA_DIR
+    return DATA_DIR / 'auth.sqlite'
+
 @dataclass(frozen=True)
 class AuthSettings:
     client_id: str
@@ -55,6 +59,7 @@ class AuthSettings:
     developer_emails: frozenset[str]
     allowed_emails: frozenset[str]
     database: Path
+    enabled: bool = True
 
     @classmethod
     def from_env(cls):
@@ -62,7 +67,8 @@ class AuthSettings:
             os.getenv('AUTH_PUBLIC_URL', 'http://localhost:3000').rstrip('/'),
             os.getenv('GOOGLE_REDIRECT_URI', 'http://localhost:8000/api/auth/google/callback').strip(),
             emails(os.getenv('AUTH_DEVELOPER_EMAILS', '')), emails(os.getenv('AUTH_ALLOWED_EMAILS', '')),
-            Path(__file__).resolve().parent.parent / 'data' / 'auth.sqlite')
+            _account_database_path(),
+            os.getenv('AUTH_ENABLED', 'true').strip().lower() not in {'false','0','no'})
 
     @property
     def secure(self):
@@ -89,6 +95,8 @@ class AuthSettings:
         return not self.allowed_emails or (authoritative and email.casefold() in self.allowed_emails | self.developer_emails)
 
     def is_developer(self, session):
+        if not self.enabled and session.get('local_developer'):
+            return True
         return bool(session.get('google_authoritative')) and session['email'].casefold() in self.developer_emails
 
 
@@ -102,14 +110,20 @@ def google_authoritative(claims):
 
 class AuthStore:
     def __init__(self, path: Path):
-        self.path = path
+        self.path = Path(path)
+        self.history = None
+        self.memory_path = None
 
     @contextmanager
     def connect(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path, timeout=10)
-        connection.row_factory = sqlite3.Row
         try:
+            connection.row_factory = sqlite3.Row
+            connection.execute('PRAGMA foreign_keys=ON')
+            if self.history is not None:
+                from .split_storage import attach_private
+                attach_private(connection, self.history.path, self.memory_path)
             with connection:
                 yield connection
         finally:
@@ -117,7 +131,7 @@ class AuthStore:
 
     def initialize(self):
         with self.connect() as db:
-            if db.execute('PRAGMA user_version').fetchone()[0] > 3:
+            if db.execute('PRAGMA user_version').fetchone()[0] > 4:
                 raise RuntimeError('Unsupported account database version')
             db.executescript('''
                 CREATE TABLE IF NOT EXISTS auth_users (
@@ -143,7 +157,11 @@ class AuthStore:
             if 'intent' not in flow_columns:
                 # Old in-flight OAuth requests may only log into existing accounts.
                 db.execute("ALTER TABLE auth_flows ADD COLUMN intent TEXT NOT NULL DEFAULT 'login'")
-            db.execute('PRAGMA user_version = 3')
+            db.execute('PRAGMA user_version = 4')
+        from .split_storage import setup_private
+        setup_private(self)
+        from .account_schema import normalize_accounts
+        normalize_accounts(self.path)
 
     def rate_limit(self, actor: str, limit: int, window: int = 60):
         now = int(time.time())
@@ -187,7 +205,11 @@ class AuthStore:
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            existing = db.execute("SELECT id,email,google_authoritative FROM auth_users WHERE provider='google' AND subject=?", (claims['sub'],)).fetchone()
+            existing = db.execute("""SELECT u.id,i.email,i.google_authoritative,u.status,u.deleted_at
+                FROM users u JOIN user_identities i ON i.user_id=u.id
+                WHERE i.provider='google' AND i.provider_subject=?""", (claims['sub'],)).fetchone()
+            if existing and (existing['status'] != 'active' or existing['deleted_at'] is not None):
+                raise GoogleLoginError('account_disabled')
             if intent == 'login' and existing is None:
                 raise GoogleLoginError('not_registered')
             if intent == 'register' and existing is not None:
@@ -195,10 +217,12 @@ class AuthStore:
             authoritative = int(google_authoritative(claims))
             if existing and (existing['email'] != claims['email'].casefold() or existing['google_authoritative'] != authoritative):
                 db.execute('DELETE FROM auth_sessions WHERE user_id=?', (existing['id'],))
-            db.execute('''INSERT INTO auth_users (id,provider,subject,email,name,created_at,updated_at,google_authoritative) VALUES (?,?,?,?,?,?,?,?)
-                ON CONFLICT(provider,subject) DO UPDATE SET email=excluded.email,
-                name=excluded.name,updated_at=excluded.updated_at,google_authoritative=excluded.google_authoritative''',
-                (str(uuid.uuid4()), 'google', claims['sub'], claims['email'].casefold(), str(claims.get('name', ''))[:160], now, now, authoritative))
+            if existing:
+                db.execute('UPDATE auth_users SET email=?,name=?,updated_at=?,google_authoritative=? WHERE id=?',
+                    (claims['email'].casefold(),str(claims.get('name',''))[:160],now,authoritative,existing['id']))
+            else:
+                db.execute('INSERT INTO auth_users(id,provider,subject,email,name,created_at,updated_at,google_authoritative) VALUES(?,?,?,?,?,?,?,?)',
+                    (str(uuid.uuid4()),'google',claims['sub'],claims['email'].casefold(),str(claims.get('name',''))[:160],now,now,authoritative))
             user_id = db.execute("SELECT id FROM auth_users WHERE provider='google' AND subject=?", (claims['sub'],)).fetchone()['id']
             if previous:
                 db.execute('DELETE FROM auth_sessions WHERE session_hash=?', (digest(previous),))
@@ -335,11 +359,45 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
     app.add_middleware(LimitedBodyMiddleware)
     router = APIRouter(prefix='/api/auth')
     public_routes = {('/api/auth/session','GET'),('/api/auth/google/login','GET'),('/api/auth/google/register','GET'),('/api/auth/google/callback','GET')}
-    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT')}
+    chat_routes = {('/api/chat','POST'),('/api/chat/stream','POST'),('/api/health','GET'),('/api/history','GET'),('/api/history','PUT'),('/api/history','PATCH'),('/api/history/index','GET'),('/api/history/search','GET')}
+
+    local_user = {'id':'jst-local-development', 'email':'', 'name':'Pengembangan lokal',
+                  'google_authoritative':False, 'local_developer':True}
+    local_csrf = secrets.token_urlsafe(32)
+    if not settings.enabled:
+        if urlparse(settings.public_url).hostname not in {'localhost','127.0.0.1','::1'}:
+            raise RuntimeError('AUTH_ENABLED=false hanya tersedia untuk pengembangan localhost.')
+        now = int(time.time())
+        with store.connect() as db:
+            db.execute("INSERT OR IGNORE INTO auth_users(id,provider,subject,email,name,created_at,updated_at,google_authoritative) VALUES(?,?,?,?,?,?,?,?)",
+                (local_user['id'],'local','development','',local_user['name'],now,now,0))
 
     @app.middleware('http')
     async def authenticate(request: Request, call_next):
         path = request.url.path
+        if not settings.enabled and (path.startswith('/api/') or path in {'/docs','/redoc','/openapi.json'}):
+            peer = request.client.host if request.client else ''
+            if peer not in {'127.0.0.1','::1','localhost'} or request.url.hostname not in {'127.0.0.1','::1','localhost'}:
+                return auth_json({'detail':'Mode tanpa login hanya tersedia di localhost.'},status_code=403)
+            if request.method == 'OPTIONS':
+                return await call_next(request)
+            if path.startswith('/api/auth/google/'):
+                return auth_json({'detail':'Google Auth sedang dinonaktifkan sementara.'},status_code=403)
+            if path == '/api/auth/session' and request.method == 'GET':
+                return auth_json({'configured':False, 'auth_enabled':False,
+                    'user':{**{k:local_user[k] for k in ['id','email','name']},'role':'developer','local':True},
+                    'csrf_token':local_csrf})
+            if request.method not in {'GET','HEAD'}:
+                csrf=request.headers.get('x-csrf-token','')
+                if request.headers.get('origin') != settings.public_url or not csrf.isascii() or not hmac.compare_digest(csrf,local_csrf):
+                    return auth_json({'detail':'Permintaan tidak valid. Muat ulang halaman.'},status_code=403)
+            limit=10 if (path in {'/api/chat','/api/chat/stream'} or path.endswith('/continuation')) else 120
+            if not store.rate_limit('local:' + ('chat' if limit==10 else 'api'),limit):
+                return auth_json({'detail':'Terlalu banyak permintaan. Coba lagi sebentar.'},status_code=429)
+            request.state.auth_user=local_user
+            response=await call_next(request)
+            response.headers['Cache-Control']='no-store'
+            return response
         if path == '/api/auth/google/callback':
             request.state.oauth_query = dict(request.query_params)
             request.scope['query_string'] = b''  # Keep codes/state out of access logs.
@@ -356,14 +414,16 @@ def install_auth(app: FastAPI, settings: AuthSettings | None = None, store: Auth
             if session is None:
                 return auth_json({'detail':'Silakan masuk dengan Google.'}, status_code=401, headers={'Cache-Control':'no-store'})
             developer = settings.is_developer(session)
-            if (path,request.method) not in chat_routes | {('/api/auth/logout','POST')} and not developer:
+            history_read = request.method == 'GET' and path.startswith('/api/history/rooms/')
+            continuation = request.method == 'POST' and path.startswith('/api/history/rooms/') and path.endswith('/continuation')
+            if (path,request.method) not in chat_routes | {('/api/auth/logout','POST')} and not history_read and not continuation and not developer:
                 return auth_json({'detail':'Hanya akun developer yang dapat mengakses fitur ini.'}, status_code=403)
             if request.method not in {'GET','HEAD'}:
                 csrf = request.headers.get('x-csrf-token','')
                 if request.headers.get('origin') != settings.public_url or not csrf.isascii() or not hmac.compare_digest(csrf,session['csrf']):
                     return auth_json({'detail':'Permintaan tidak valid. Muat ulang halaman.'},status_code=403)
-            limit = 10 if path in {'/api/chat','/api/chat/stream'} else 120
-            bucket = 'chat' if path in {'/api/chat','/api/chat/stream'} else 'api'
+            limit = 10 if (path in {'/api/chat','/api/chat/stream'} or path.endswith('/continuation')) else 120
+            bucket = 'chat' if (path in {'/api/chat','/api/chat/stream'} or path.endswith('/continuation')) else 'api'
             if path != '/api/auth/logout' and not store.rate_limit(bucket + ':' + session['id'],limit):
                 return auth_json({'detail':'Terlalu banyak permintaan. Coba lagi sebentar.'},status_code=429,headers={'Retry-After':'60','Cache-Control':'no-store'})
             request.state.auth_user = session

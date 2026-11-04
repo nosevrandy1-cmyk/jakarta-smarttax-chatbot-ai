@@ -16,7 +16,7 @@ from app.source_routes import install_source_routes
 class SourceReviewTests(unittest.TestCase):
     def setUp(self):
         fixtures.EmptyDashboardTests.setUp(self)
-        self.store = fixtures.chroma_store
+        self.store = fixtures.knowledge_store
 
     def stage(self):
         return self.store.ingest_pdf(make_pdf('SOURCE UNIQUE TEST'), '../../original.pdf')

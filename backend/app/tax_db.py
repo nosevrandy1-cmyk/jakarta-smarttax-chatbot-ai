@@ -31,7 +31,7 @@ TAX_THEMES: Dict[str, Dict[str, str]] = {
     "PAT": {
         "code": "PAT",
         "name": "Pajak Air Tanah (PAT)",
-        "short_desc": "SKPD Air Tanah, Volume Meter Air, NPAT & Tarif 20% DKI Jakarta",
+        "short_desc": "SKPD Air Tanah, Volume Meter Air & NPAT",
     },
 }
 

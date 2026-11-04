@@ -8,7 +8,7 @@ from app.embedder import embedder
 class AutomaticSourceTests(unittest.TestCase):
     def setUp(self):
         fixtures.EmptyDashboardTests.setUp(self)
-        self.store=fixtures.chroma_store
+        self.store=fixtures.knowledge_store
 
     def test_success_is_active_and_records_uploader(self):
         result=self.store.ingest_pdf(make_pdf('AUTO TRUSTED SOURCE'), 'automatic.pdf')
@@ -30,7 +30,7 @@ class AutomaticSourceTests(unittest.TestCase):
         self.assertEqual(detail['status'],'approved')
 
     def test_incomplete_extraction_does_not_auto_activate(self):
-        source_id=self.store.archive.stage(['Partial text'],[{'doc_name':'scan.pdf','source_type':'pdf_regulasi'}],
+        source_id=self.store.archive.stage(['Partial text'],[{'doc_name':'scan.pdf','source_type':'pdf_regulasi','tema_pajak':'PBB-P2'}],
             b'%PDF-test-only','scan.pdf',['Halaman 2 tidak memiliki teks.'])
         with self.assertRaisesRegex(ValueError,'OCR'):
             self.store.archive.activate(source_id,'developer',self.store.collection,embedder)

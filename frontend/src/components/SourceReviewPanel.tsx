@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, API_BASE } from "@/lib/api";
 
 type Source = { id: string; doc_name: string; status: string; chunk_count: number;
@@ -8,6 +8,7 @@ type Detail = Source & { chunks: { text: string; page?: number; sheet?: string; 
 const labels: Record<string, string> = { pending: "Belum diproses", approved: "Aktif", rejected: "Ditolak (arsip lama)", failed: "Gagal diproses" };
 
 export default function SourceReviewPanel({ onReviewed }: { onReviewed: () => void }) {
+  const lastDownload=useRef(0);
   const [items, setItems] = useState<Source[]>([]);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
@@ -27,12 +28,14 @@ export default function SourceReviewPanel({ onReviewed }: { onReviewed: () => vo
     return () => window.removeEventListener("jst-source-uploaded", refresh);
   }, [load]);
   async function open(id: string) {
+    if(busy)return;setBusy(true);
     setError(""); setDetail(null); setOffset(0);
     try {
       const response = await apiFetch(`/api/rag/sources/${id}`);
       if (!response.ok) throw new Error("Rincian sumber belum dapat dimuat.");
       setDetail(await response.json());
     } catch (e) { setError(e instanceof Error ? e.message : "Gagal memuat rincian."); }
+    finally {setBusy(false);}
   }
   async function processSource() {
     if (!detail || busy) return;
@@ -57,7 +60,7 @@ export default function SourceReviewPanel({ onReviewed }: { onReviewed: () => vo
     </div>)}</div>
     {detail && <div className="jst-review-detail">
       <h3>{detail.doc_name}</h3><p>{labels[detail.status]}</p>
-      {detail.has_file && <a className="jst-text-button" href={`${API_BASE}/api/rag/sources/${detail.id}/file`} target="_blank" rel="noopener noreferrer">Unduh file asli</a>}
+      {detail.has_file && <a className="jst-text-button" href={`${API_BASE}/api/rag/sources/${detail.id}/file`} target="_blank" rel="noopener noreferrer" onClick={event=>{if(Date.now()-lastDownload.current<2000){event.preventDefault();return;}lastDownload.current=Date.now();}}>Unduh file asli</a>}
       {detail.warnings.map((warning, i) => <p role="status" key={i}>{warning}</p>)}
       <p className="jst-note">Halaman di bawah mengikuti urutan fisik PDF. Hasil ekstraksi tabel kompleks belum dijamin sempurna. OCR belum tersedia.</p>
       {detail.chunks.slice(offset, offset + 10).map((chunk, i) => <details key={`${detail.id}-${offset+i}`}>

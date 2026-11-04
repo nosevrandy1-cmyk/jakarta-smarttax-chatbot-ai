@@ -35,7 +35,7 @@ export const CAPABILITY_MODES: CapabilityModeConfig[] = [
     shortLabel: "Tarif & Data Pajak",
     fullLabel: "Konsultasi Tarif, Rumus & Objek Pajak",
     engineBadge: "Model lokal",
-    description: "Bahas informasi pajak berdasarkan dokumen yang tersedia.",
+    description: "Tanyakan seputar aturan, perhitungan, hingga ketentuan perpajakan daerah DKI Jakarta.",
     placeholderPrefix: "Tanyakan tarif, rumus, atau cek NOP/NPWPD",
   },
   {

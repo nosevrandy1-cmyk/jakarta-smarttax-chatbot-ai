@@ -7,16 +7,18 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env", override=False)
 
-DATA_DIR = BASE_DIR / "data"
-QDRANT_STORAGE_DIR = BASE_DIR / "qdrant_storage"
-CHROMA_STORAGE_DIR = Path(
-    os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "smarttax_vectordb"))
-).resolve()
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "jakarta_smarttax_knowledge_official")
+def backend_path(raw_path):
+    path = Path(raw_path).expanduser()
+    return (path if path.is_absolute() else BASE_DIR / path).resolve()
+
+
+DATA_DIR = backend_path(os.getenv("JST_DATA_DIR", str(BASE_DIR / "data")))
+QDRANT_STORAGE_DIR = backend_path(os.getenv("QDRANT_STORAGE_DIR", str(BASE_DIR / "qdrant_knowledge_storage")))
+QDRANT_KNOWLEDGE_COLLECTION = os.getenv("QDRANT_KNOWLEDGE_COLLECTION", "jakarta_smarttax_knowledge")
 
 GOLDEN_DATASET_PATH = DATA_DIR / "golden_dataset.json"
 INTELLIGENCE_HISTORY_PATH = BASE_DIR / "dashboard_intelligence_history.json"
-UPLOAD_STAGING_DIR = Path(os.getenv("JST_UPLOAD_DIR", str(DATA_DIR / "uploads"))).resolve()
+UPLOAD_STAGING_DIR = backend_path(os.getenv("JST_UPLOAD_DIR", str(DATA_DIR / "uploads")))
 
 OLLAMA_LOCAL_URL = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 OLLAMA_SECONDARY_URL = os.getenv("OLLAMA_SECONDARY_HOST", OLLAMA_LOCAL_URL).rstrip("/")
@@ -67,7 +69,7 @@ OLLAMA_MODEL_PROFILES: Dict[str, Dict[str, str]] = {
 }
 
 QDRANT_URL = os.getenv("QDRANT_URL", "").strip()
-QDRANT_COLLECTION = os.getenv("QDRANT_ACTIVE_COLLECTION", "jakarta_smarttax_sources")
+
 
 TRANSFORMERS_MODEL_NAME = os.getenv(
     "TRANSFORMERS_MODEL_NAME",

@@ -28,8 +28,8 @@ def make_pdf(text=None, encrypted=False):
 
 class WindowsIngestionTests(unittest.TestCase):
     def setUp(self):
-        self.store = fixtures.chroma_store
-        self.assertEqual(fixtures.config.CHROMA_STORAGE_DIR, (fixtures.TEST_ROOT / 'chroma').resolve())
+        self.store = fixtures.knowledge_store
+        self.assertEqual(fixtures.config.QDRANT_STORAGE_DIR, (fixtures.TEST_ROOT / 'qdrant').resolve())
 
     def test_pdf_text_reaches_collection_without_temporary_file(self):
         with patch('tempfile.NamedTemporaryFile', side_effect=AssertionError('Unexpected disk staging')):

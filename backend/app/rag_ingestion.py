@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import chromadb
+from .vector_store import QdrantRecords
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -12,8 +12,10 @@ from pypdf import PdfReader
 from pypdf.errors import PyPdfError
 
 from .config import (
-    CHROMA_COLLECTION,
-    CHROMA_STORAGE_DIR,
+    QDRANT_KNOWLEDGE_COLLECTION,
+    QDRANT_STORAGE_DIR,
+    QDRANT_URL,
+    VECTOR_DIM,
     TAX_DOMAINS,
     UPLOAD_STAGING_DIR,
 )
@@ -94,22 +96,19 @@ def format_reasoning_block(payload: LearnReasoningPayload) -> str:
         f"[REFERENSI PENALARAN KASUS PAJAK - Topik: {payload.topik_pajak}]\n"
         f"Kasus / Pertanyaan: {payload.pertanyaan_kasus.strip()}\n"
         f"Alur Penalaran & Dasar Hukum: {payload.alur_penalaran.strip()}\n"
-        f"Kesimpulan / Solusi Resmi: {payload.jawaban_final.strip()}"
+        f"Kesimpulan / Jawaban kasus: {payload.jawaban_final.strip()}"
     )
 
 
-class SmartTaxChromaStore:
+class SmartTaxKnowledgeStore:
     def __init__(self) -> None:
-        CHROMA_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        QDRANT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
         UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
         self.archive = SourceArchive(UPLOAD_STAGING_DIR)
-        self.client = chromadb.PersistentClient(path=str(CHROMA_STORAGE_DIR))
-        self.collection_name = CHROMA_COLLECTION
-        self.collection = self.client.get_or_create_collection(
-            name=self.collection_name,
-            embedding_function=None,  # Only explicit application-generated vectors are accepted.
-            metadata={"hnsw:space": "cosine"},
-        )
+        self.collection_name = QDRANT_KNOWLEDGE_COLLECTION
+        self.collection = QdrantRecords(QDRANT_STORAGE_DIR, QDRANT_URL, self.collection_name, VECTOR_DIM)
+        self.client = self.collection.client
+        self.mode = "qdrant-server" if QDRANT_URL else "qdrant-local-disk"
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -306,6 +305,20 @@ class SmartTaxChromaStore:
         }
         return summary
 
+    def reindex_active_sources(self):
+        import json
+        total = 0
+        for source in self.archive.list():
+            if source['status'] != 'approved':
+                continue
+            payload = json.loads(self.archive.get(source['id'])['payload'])
+            for start in range(0, len(payload['ids']), 100):
+                texts = payload['documents'][start:start+100]
+                self.collection.upsert(ids=payload['ids'][start:start+100], documents=texts,
+                    metadatas=payload['metadatas'][start:start+100], embeddings=embedder.embed_texts(texts))
+                total += len(texts)
+        return {'total_points':total, 'collection':self.collection_name}
+
     def approved_ids(self):
         return [item["id"] for item in self.archive.list() if item["status"] == "approved"]
 
@@ -355,9 +368,15 @@ class SmartTaxChromaStore:
         metas_list = (res.get("metadatas") or [[]])[0]
         dists_list = (res.get("distances") or [[]])[0]
 
+        tax_code = domain.upper() if domain and domain.upper() in TAX_DOMAINS else tema_pajak.upper() if tema_pajak and tema_pajak.upper() in TAX_THEMES else None
+        tax_code = 'PBB-P2' if tax_code == 'JPB' else tax_code
+        valid = self.archive.validated_records(ids_list, tax_code)
         results: List[RetrievalResult] = []
         for cid, doc_text, meta, dist in zip(ids_list, docs_list, metas_list, dists_list):
-            meta_dict = meta or {}
+            if str(cid) not in valid:
+                continue
+            doc_text = valid[str(cid)]['text']
+            meta_dict = valid[str(cid)]['metadata']
             cosine_dist = float(dist) if dist is not None else 0.5
             sim = max(0.0, min(1.0, 1.0 - cosine_dist))
             results.append(
@@ -474,7 +493,9 @@ class SmartTaxChromaStore:
 
         return {
             "collection": self.collection_name,
-            "persist_dir": str(CHROMA_STORAGE_DIR),
+            "persist_dir": str(QDRANT_STORAGE_DIR),
+            "engine": "qdrant",
+            "mode": self.mode,
             "distance_metric": "cosine",
             "total_chunks": len(metas),
             "total_documents": len({self._document_key(cid, meta or {}) for cid, meta in zip(all_items.get("ids") or [], metas)}),
@@ -489,4 +510,4 @@ class SmartTaxChromaStore:
         }
 
 
-chroma_store = SmartTaxChromaStore()
+knowledge_store = SmartTaxKnowledgeStore()

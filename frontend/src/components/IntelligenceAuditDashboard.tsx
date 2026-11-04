@@ -1,6 +1,6 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, ApiRequestLimitError } from "@/lib/api";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowsClockwiseIcon } from "@phosphor-icons/react/dist/csr/ArrowsClockwise";
@@ -128,7 +128,7 @@ export default function IntelligenceAuditDashboard({
       const msg = err instanceof Error ? err.message : String(err);
       setStatusBanner({
         type: "error",
-        text: `Gagal memuat telemetri audit dari backend (${msg}). Pastikan server FastAPI berjalan di port 8000.`,
+        text: err instanceof ApiRequestLimitError ? msg : `Data belum dapat dimuat. ${msg}`,
       });
     } finally {
       setLoading(false);

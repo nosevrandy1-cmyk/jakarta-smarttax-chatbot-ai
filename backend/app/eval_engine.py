@@ -19,7 +19,7 @@ from .config import (
     OLLAMA_TOP_P,
 )
 from .embedder import embedder
-from .rag_ingestion import RetrievalResult, chroma_store
+from .rag_ingestion import RetrievalResult, knowledge_store
 
 
 def _classify_status(score_pct: float) -> str:
@@ -68,7 +68,7 @@ def _compute_faithfulness(answer: str, chunks: List[RetrievalResult]) -> float:
 def _synthesize_grounded_answer(item: Dict[str, Any], chunks: List[RetrievalResult]) -> str:
     if not chunks:
         return (
-            f"Belum ditemukan dokumen referensi lokal pada ChromaDB untuk domain {item.get('domain', 'PBB-P2')}."
+            f"Belum ditemukan dokumen referensi lokal pada Qdrant untuk domain {item.get('domain', 'PBB-P2')}."
         )
 
     extracted_segments: List[str] = []
@@ -105,7 +105,7 @@ async def _try_ollama_eval_answer(
         "Jawab pertanyaan secara ringkas, padat, dan 100% mengutip angka tarif, batas tidak kena pajak, "
         "rumus, serta dasar hukum dari konteks yang diberikan tanpa mengarang."
     )
-    user_prompt = f"KONTEKS CHROMADB:\n{context_text}\n\nPERTANYAAN:\n{question}"
+    user_prompt = f"KONTEKS QDRANT:\n{context_text}\n\nPERTANYAAN:\n{question}"
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.post(
@@ -141,8 +141,28 @@ class SmartTaxEvaluationEngine:
         self.golden_path = GOLDEN_DATASET_PATH
         self.history_path = INTELLIGENCE_HISTORY_PATH
         self.mirror_history_path = DATA_DIR / "dashboard_intelligence_history.json"
+        self._catalog_paths = (self.golden_path,self.history_path,self.mirror_history_path)
+
+    def _catalog(self):
+        # Explicit alternate paths remain usable for standalone benchmark fixtures.
+        if (self.golden_path,self.history_path,self.mirror_history_path) != self._catalog_paths:
+            return None
+        from .catalog_evaluation import import_once
+        import_once(knowledge_store.archive,self.golden_path,self.history_path)
+        return knowledge_store.archive
+
+    def clear_catalog(self):
+        archive = self._catalog()
+        if archive:
+            with archive.connect() as db:
+                db.execute('DELETE FROM evaluation_snapshots')
+                db.execute('DELETE FROM golden_items')
 
     def load_golden_dataset(self) -> List[Dict[str, Any]]:
+        archive = self._catalog()
+        if archive:
+            with archive.connect() as db:
+                return [json.loads(r[0]) for r in db.execute('SELECT item_json FROM golden_items ORDER BY position')]
         if not self.golden_path.exists():
             return []
         data = json.loads(self.golden_path.read_text(encoding="utf-8"))
@@ -151,6 +171,11 @@ class SmartTaxEvaluationEngine:
         return data
 
     def load_history(self) -> List[Dict[str, Any]]:
+        archive = self._catalog()
+        if archive:
+            from .catalog_evaluation import load_history
+            with archive.connect() as db:
+                return load_history(db)
         # An empty history is authoritative. Reading the dashboard never creates
         # baseline scores or restores a legacy demo snapshot from the mirror.
         if not self.history_path.exists():
@@ -173,7 +198,7 @@ class SmartTaxEvaluationEngine:
                 "golden_items": questions, "reason": reason}
 
     def _source_count(self) -> int:
-        return int(chroma_store.get_collection_telemetry()["total_chunks"])
+        return int(knowledge_store.get_collection_telemetry()["total_chunks"])
 
     def _require_evaluation_data(self) -> None:
         readiness = self.evaluation_readiness()
@@ -181,6 +206,12 @@ class SmartTaxEvaluationEngine:
             raise ValueError(readiness["reason"])
 
     def _save_history(self, history: List[Dict[str, Any]]) -> None:
+        archive = self._catalog()
+        if archive:
+            from .catalog_evaluation import save_history
+            with archive.connect() as db:
+                save_history(db,history)
+            return
         payload = json.dumps(history, ensure_ascii=False, indent=2)
         self.history_path.write_text(payload, encoding="utf-8")
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -194,7 +225,7 @@ class SmartTaxEvaluationEngine:
         live_answers: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         self._require_evaluation_data()
-        telemetry = chroma_store.get_collection_telemetry()
+        telemetry = knowledge_store.get_collection_telemetry()
         golden_items = self.load_golden_dataset()
 
         prev_item_map: Dict[str, Dict[str, Any]] = {}
@@ -202,8 +233,8 @@ class SmartTaxEvaluationEngine:
             for pi in previous_snapshot["items"]:
                 prev_item_map[str(pi.get("id"))] = pi
 
-        source_meta = ingested_source_meta or chroma_store.last_ingested_source or {
-            "doc_name": "Korpus Pengetahuan ChromaDB DKI",
+        source_meta = ingested_source_meta or knowledge_store.last_ingested_source or {
+            "doc_name": "Korpus Pengetahuan Qdrant DKI",
             "source_type": "pdf_regulasi",
             "contributor": "Auditor Bapenda DKI",
             "domain": "PBB-P2",
@@ -217,8 +248,8 @@ class SmartTaxEvaluationEngine:
             ground_truth = item["kunci_jawaban"]
             req_kws = item.get("kata_kunci_wajib", [])
 
-            domain_chunks = chroma_store.query_knowledge(question, top_k=3, domain=dom)
-            global_chunks = chroma_store.query_knowledge(question, top_k=3)
+            domain_chunks = knowledge_store.query_knowledge(question, top_k=3, domain=dom)
+            global_chunks = knowledge_store.query_knowledge(question, top_k=3)
 
             seen_ids = set()
             merged_chunks: List[RetrievalResult] = []
@@ -384,7 +415,7 @@ class SmartTaxEvaluationEngine:
         if use_live_llm:
             golden_items = self.load_golden_dataset()
             for item in golden_items:
-                chunks = chroma_store.query_knowledge(
+                chunks = knowledge_store.query_knowledge(
                     item["pertanyaan"], top_k=3, domain=item["domain"]
                 )
                 ans = await _try_ollama_eval_answer(
@@ -406,7 +437,7 @@ class SmartTaxEvaluationEngine:
     async def get_dashboard_state(self) -> Dict[str, Any]:
         history = self.load_history()
         latest = history[-1] if history else None
-        telemetry = chroma_store.get_collection_telemetry()
+        telemetry = knowledge_store.get_collection_telemetry()
 
         ollama_online = False
         installed_models: List[str] = []

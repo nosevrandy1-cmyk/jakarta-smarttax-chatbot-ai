@@ -23,13 +23,24 @@ class AnswerReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(refs,[])
         self.assertNotIn('[1]',answer)
 
+    def test_grouped_markers_are_preserved_and_resolved(self):
+        answer, refs = chat.resolve_answer_references('Klaim [1, 2]. Lainnya [2,3].',
+            [{'number':1},{'number':2},{'number':3}])
+        self.assertEqual(answer, 'Klaim [1, 2]. Lainnya [2,3].')
+        self.assertEqual([r['number'] for r in refs],[1,2,3])
+
+    def test_grouped_unknown_ids_are_removed_without_losing_valid_sources(self):
+        answer, refs = chat.resolve_answer_references('Klaim [99, 2]. Tidak sah [98, 99]. Ulang [2, 2].', [{'number':2}])
+        self.assertEqual(answer,'Klaim [2]. Tidak sah . Ulang [2, 2].')
+        self.assertEqual(len(refs),1)
+
     async def test_stream_and_json_response_resolve_same_real_source(self):
         hit=SimpleNamespace(doc_name='PRD.pdf',text='Login menggunakan Google.',chunk_id='pdf-test-0001',
             source_type='pdf_regulasi',metadata={'chunk_index':1},model_dump=lambda:{'doc_name':'PRD.pdf'})
         store=SimpleNamespace(query_knowledge=lambda *a,**k:[hit],get_collection_telemetry=lambda:
             {'total_chunks':1,'recent_sources':[{'doc_name':'PRD.pdf','source_type':'pdf_regulasi','domain':'PBB-P2'}]})
         def respond(*args,**kwargs):return Reply('Login direncanakan memakai Google [1]. Tidak sah [8].')
-        with patch.object(chat,'chroma_store',store),patch.object(chat.httpx,'AsyncClient',Model),patch.object(Model,'stream',respond):
+        with patch.object(chat,'knowledge_store',store),patch.object(chat.httpx,'AsyncClient',Model),patch.object(Model,'stream',respond):
             result=await chat.run_smarttax_chat('Bagaimana login?',[])
         self.assertNotIn('[8]',result['answer'])
         self.assertEqual(len(result['references']),1)
