@@ -7,17 +7,16 @@ CLOSING = "</JST_FOLLOW_UPS>"
 # Recognize the reserved name before its optional bracket. Models can omit >.
 MARKER_STEM = "<JST_FOLLOW_UPS"
 FOLLOWUP_INSTRUCTIONS = (
-    " Setelah jawaban utama selesai, tambahkan satu blok metadata persis berformat "
-    '<JST_FOLLOW_UPS>["pertanyaan lanjutan"]</JST_FOLLOW_UPS>. '
-    "Isi dengan maksimal dua pertanyaan singkat dari sudut pandang pengguna, berdasarkan "
-    "pertanyaan terbaru DAN jawaban yang baru Anda berikan. Jangan menyalin pertanyaan awal. "
-    "Pilih kelanjutan yang spesifik dan bisa dibantu oleh konteks sumber yang tersedia, "
-    "bukan pertanyaan umum yang sama setiap jawaban. Jangan mengarang data, meminta lampiran, "
-    "menawarkan unduhan, atau keluar dari kategori pajak. Jangan menulis label saran dalam "
-    "jawaban utama. Jika jawaban hanya penolakan, keterbatasan data, atau tidak ada kelanjutan "
-    "yang berguna, isi blok dengan []. Gunakan JSON valid tanpa code fence. "
-    "Blok ini adalah metadata aplikasi dan tidak termasuk jawaban utama."
+    " Setelah jawaban utama selesai, tambahkan metadata sesuai format navigasi yang diberikan. "
+    "Isi questions dengan maksimal dua pertanyaan singkat dari sudut pandang pengguna, "
+    "berdasarkan pertanyaan terbaru DAN jawaban yang baru diberikan. Jangan menyalin pertanyaan awal. "
+    "Pilih kelanjutan spesifik yang bisa dibantu konteks sumber, bukan saran umum yang berulang. "
+    "Jangan mengarang data, meminta lampiran, menawarkan unduhan, atau keluar kategori pajak. "
+    "Jika jawaban hanya penolakan, keterbatasan data, atau tidak ada kelanjutan berguna, "
+    "questions kosong. Jangan menulis label saran dalam jawaban utama. "
+    "Gunakan JSON valid tanpa code fence; metadata bukan bagian jawaban utama."
 )
+
 
 
 def validate_followups(raw, original_question):
@@ -48,6 +47,8 @@ class FollowUpStream:
         self.question = question
         self.pending = ""
         self.metadata = None
+        self.suggested_theme = None
+        self.suggested_themes = []
 
     def feed(self, text):
         if self.metadata is not None:
@@ -85,4 +86,10 @@ class FollowUpStream:
             raw = json.loads(payload)
         except (ValueError, TypeError):
             return "", []
+        if isinstance(raw, dict):
+            if raw.get("confidence") == "high" and isinstance(raw.get("suggested_theme"), str):
+                self.suggested_theme = raw["suggested_theme"]
+            if raw.get("confidence") == "high" and isinstance(raw.get("suggested_themes"), list):
+                self.suggested_themes = raw["suggested_themes"]
+            raw = raw.get("questions", [])
         return "", validate_followups(raw, self.question)

@@ -11,6 +11,7 @@ from .rag_ingestion import knowledge_store
 from .tax_db import TAX_THEMES
 from .context_budget import context_policy, message_tokens, estimate_tokens
 from .followups import FOLLOWUP_INSTRUCTIONS, FollowUpStream
+from .tax_navigation import fast_navigation_request, navigation_instructions, validated_destinations, NAVIGATION_SCHEMA, navigation_messages
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def build_thematic_system_prompt(tema_pajak: str, mode_kapabilitas: str = "konsu
 
 
 def chat_context_policy():
-    return context_policy(build_thematic_system_prompt("PBB-P2") + FOLLOWUP_INSTRUCTIONS)
+    return context_policy(build_thematic_system_prompt("PBB-P2") + FOLLOWUP_INSTRUCTIONS + navigation_instructions("PBB-P2"))
 
 
 def build_chat_messages(question, history, inventory, context, total_chunks, tema, mode, memory=""):
@@ -102,7 +103,7 @@ def build_chat_messages(question, history, inventory, context, total_chunks, tem
         "kutipan_tersedia": context,
         "pertanyaan_lama_sudah_selesai": prior_questions,
     }
-    instructions = build_thematic_system_prompt(tema, mode) + FOLLOWUP_INSTRUCTIONS + (
+    instructions = build_thematic_system_prompt(tema, mode) + FOLLOWUP_INSTRUCTIONS + navigation_instructions(tema) + (
         " Jawab hanya PERTANYAAN TERBARU pada akhir pesan pengguna. "
         "Pesan pengguna sebelumnya juga memuat parameter dan koreksi yang tetap berlaku. "
         "Urutan prioritas parameter kasus: pesan pengguna terbaru, pernyataan pengguna sebelumnya "
@@ -161,7 +162,7 @@ def is_standalone_greeting(message: str) -> bool:
     }
 
 
-async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
+async def _stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
     model: str = DEFAULT_CHAT_MODEL, tema_pajak: str = "PBB-P2",
     mode_kapabilitas: str = "konsultasi", memory: str = "") -> AsyncGenerator[str, None]:
     started = time.perf_counter()
@@ -171,7 +172,11 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
         return json.dumps({"type": kind, **values}, ensure_ascii=False) + "\n"
     greeting = is_standalone_greeting(user_message)
     references = []
-    if greeting:
+    fast_navigation = fast_navigation_request(user_message, tema)
+    if fast_navigation:
+        yield event("status", text="Menyusun jawaban\u2026")
+        messages = navigation_messages(user_message, tema)
+    elif greeting:
         yield event("status", text="Menyiapkan jawaban…")
         # The model writes the response; no answer text is prescribed here.
         messages = [
@@ -233,13 +238,16 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
     streamed = False
     answer_parts = []
     follow_ups = []
-    followup_stream = None if greeting else FollowUpStream(user_message)
+    followup_stream = None if greeting or fast_navigation else FollowUpStream(user_message)
+    navigation_parts = []
+    suggested_themes = []
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(OLLAMA_TIMEOUT, connect=10)) as client:
             async with client.stream("POST", f"{base}/api/chat", headers=headers, json={
                 "model":selected, "messages":messages, "stream":True,
-                **({"think":False if greeting else OLLAMA_THINK} if selected.startswith("gemma4:") else {}),
-                "options":{"num_ctx":OLLAMA_NUM_CTX,"num_predict":max(1, policy["limit"] - prompt_tokens - 32),"temperature":OLLAMA_TEMPERATURE,
+                **({"format": NAVIGATION_SCHEMA} if fast_navigation and base != OLLAMA_CLOUD_URL else {}),
+                **({"think":False if greeting or fast_navigation else OLLAMA_THINK} if selected.startswith("gemma4:") else {}),
+                "options":{"num_ctx":OLLAMA_NUM_CTX,"num_predict":min(384 if fast_navigation else policy["limit"], max(1, policy["limit"] - prompt_tokens - 32)),"temperature":0 if fast_navigation else OLLAMA_TEMPERATURE,
                            "top_p":OLLAMA_TOP_P,"top_k":OLLAMA_TOP_K}}) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
@@ -249,6 +257,11 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
                     if chunk.get("error"):
                         raise RuntimeError(chunk["error"])
                     content = (chunk.get("message") or {}).get("content", "")
+                    if content and fast_navigation:
+                        navigation_parts.append(content)
+                        if sum(map(len, navigation_parts)) > 12000:
+                            raise ValueError("Navigation output too large")
+                        continue
                     if content:
                         visible = followup_stream.feed(content) if followup_stream else content
                         if visible:
@@ -261,6 +274,15 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
                         if followup_stream and followup_stream.metadata is not None and stage != "suggestions":
                             stage = "suggestions"
                             yield event("status", text="Menyiapkan saran lanjutan…")
+        if fast_navigation:
+            navigation = json.loads("".join(navigation_parts))
+            if not isinstance(navigation, dict) or not isinstance(navigation.get("answer"), str) or not navigation["answer"].strip():
+                raise ValueError("Invalid navigation response")
+            answer = navigation["answer"].strip()
+            suggested_themes = validated_destinations(navigation.get("suggested_themes"), navigation.get("confidence"), tema)
+            answer_parts.append(answer)
+            streamed = True
+            yield event("token", delta=answer)
         if followup_stream:
             tail, follow_ups = followup_stream.finish()
             if tail:
@@ -275,10 +297,29 @@ async def stream_smarttax_chat(user_message: str, history: List[Dict[str, str]],
         yield event("done", model_used=selected, response_source="unavailable",
                     duration_ms=int((time.perf_counter()-started)*1000), follow_ups=[])
         return
+    if followup_stream:
+        suggested_themes = validated_destinations(
+            followup_stream.suggested_themes or ([followup_stream.suggested_theme] if followup_stream.suggested_theme else []),
+            "high", tema)
+    suggested_theme = suggested_themes[0] if suggested_themes else None
+    if suggested_themes:
+        follow_ups = []
     answer, cited_references = resolve_answer_references("".join(answer_parts), references)
     yield event("done", answer=answer, references=cited_references, model_used=selected, response_source="ollama", tema_pajak=tema,
-        mode_kapabilitas=mode, suggested_theme=None, follow_ups=follow_ups,
+        mode_kapabilitas=mode, suggested_theme=suggested_theme, suggested_themes=suggested_themes, follow_ups=follow_ups,
         duration_ms=int((time.perf_counter()-started)*1000))
+
+
+# Shared by streaming and non-streaming chat routes in this backend process.
+from contextlib import aclosing
+from .inference_queue import InferenceQueue
+inference_queue = InferenceQueue()
+
+
+async def stream_smarttax_chat(*args, actor_id=None, room_id=None, **kwargs):
+    async with aclosing(inference_queue.stream(lambda: _stream_smarttax_chat(*args, **kwargs), actor_id=actor_id, room_id=room_id)) as stream:
+        async for item in stream:
+            yield item
 
 
 async def run_smarttax_chat(
@@ -288,6 +329,7 @@ async def run_smarttax_chat(
     tema_pajak: str = "PBB-P2",
     mode_kapabilitas: str = "konsultasi",
     memory: str = "",
+    actor_id=None, room_id=None,
 ) -> Dict[str, Any]:
     full_text = ""
     qdrant_sources: List[Dict[str, Any]] = []
@@ -296,11 +338,12 @@ async def run_smarttax_chat(
     response_source = "unavailable"
     error = None
     references: List[Dict[str, Any]] = []
+    suggested_themes = []
     suggested_theme: Optional[str] = None
     resolved_mode = mode_kapabilitas
     follow_ups: List[str] = []
     async for raw_line in stream_smarttax_chat(
-        user_message, history, model, tema_pajak, mode_kapabilitas, memory
+        user_message, history, model, tema_pajak, mode_kapabilitas, memory, actor_id=actor_id, room_id=room_id
     ):
         if not raw_line.strip():
             continue
@@ -320,6 +363,8 @@ async def run_smarttax_chat(
             model_used = evt.get("model_used", model)
             response_source = evt.get("response_source", "unavailable")
             follow_ups = evt.get("follow_ups", [])
+            suggested_theme = evt.get("suggested_theme")
+            suggested_themes = evt.get("suggested_themes", [])
 
     return {
         "answer": full_text.strip(),
@@ -328,6 +373,7 @@ async def run_smarttax_chat(
         "tema_pajak": tema_pajak,
         "mode_kapabilitas": resolved_mode,
         "suggested_theme": suggested_theme,
+        "suggested_themes": suggested_themes,
         "follow_ups": follow_ups,
         "model_used": model_used,
         "response_source": response_source,

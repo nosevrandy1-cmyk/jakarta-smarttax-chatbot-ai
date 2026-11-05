@@ -352,6 +352,7 @@ async def chat_endpoint(req: ChatRequestInput, request: Request) -> Dict[str, An
     memory = continuation_context(_auth_store, request.state.auth_user["id"], req.room_id)
     return await run_smarttax_chat(
         user_message=clean_msg,
+        actor_id=request.state.auth_user["id"], room_id=req.room_id,
         history=history_dicts,
         memory=memory,
         model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,
@@ -375,6 +376,7 @@ async def chat_stream_endpoint(req: ChatRequestInput, request: Request) -> Strea
     return StreamingResponse(
         stream_smarttax_chat(
             user_message=clean_msg,
+            actor_id=request.state.auth_user["id"], room_id=req.room_id,
             history=history_dicts,
             memory=memory,
             model=(req.model or DEFAULT_CHAT_MODEL) if install_auth_settings.is_developer(request.state.auth_user) else DEFAULT_CHAT_MODEL,

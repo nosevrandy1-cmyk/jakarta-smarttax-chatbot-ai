@@ -17,6 +17,7 @@ class Message(BaseModel):
     modelUsed: str | None = Field(default=None, max_length=120)
     durationMs: float | None = Field(default=None, ge=0)
     suggestedTheme: str | None = Field(default=None, max_length=30)
+    suggestedThemes: list[Literal['PBB-P2', 'PBJT', 'BPHTB', 'REKLAME', 'PAT']] | None = Field(default=None, max_length=2)
     followUps: list[str] | None = Field(default=None, max_length=20)
     originalQuestion: str | None = Field(default=None, max_length=10000)
     theme: Literal['PBB-P2', 'JPB', 'PBJT', 'BPHTB', 'REKLAME', 'PAT'] | None = None

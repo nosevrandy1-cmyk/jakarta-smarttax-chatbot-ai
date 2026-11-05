@@ -2,6 +2,7 @@
 
 import { resolveChatTitle, getLocalChatCommand, roomContext, type ContextPolicy } from "@/lib/chatContext";
 import {getCommandSuggestions, resolveCommandInput} from "@/lib/chatCommands";
+import {suggestedTaxTargets, precedingQuestion} from "@/lib/taxNavigation";
 import {presentAssistantMessage} from "@/lib/assistantPresentation";
 import ContinuationOverlay from "@/components/ContinuationOverlay";
 import ResponseProgress from "@/components/ResponseProgress";
@@ -185,6 +186,7 @@ interface ChatMessage {
   durationMs?: number;
   theme?: TaxThemeCode;
   suggestedTheme?: TaxThemeCode;
+  suggestedThemes?: TaxThemeCode[];
   followUps?: string[];
   originalQuestion?: string;
 }
@@ -823,7 +825,8 @@ export default function TaxAssistantView() {
 
   async function sendPrompt(
     promptText?: string,
-    themeOverride?: TaxThemeCode
+    themeOverride?: TaxThemeCode,
+    roomOverride?: ChatSession
   ) {
     const originalQuery = (promptText ?? input).trim();
     const query=originalQuery.startsWith("/") ? resolveCommandInput(originalQuery)||originalQuery : originalQuery;
@@ -835,20 +838,20 @@ export default function TaxAssistantView() {
       if(textareaRef.current)textareaRef.current.style.height="auto";
       return;
     }
-    const targetSessionId = activeSessionId;
-    const targetSession = sessionsRef.current.find((s) => s.id === targetSessionId) || activeSession;
+    const targetSessionId = roomOverride?.id || activeSessionId;
+    const targetSession = roomOverride || sessionsRef.current.find((s) => s.id === targetSessionId) || activeSession;
     if (!query) return;
     const gate = canStartSessionGeneration(sessionsRef.current, targetSessionId, 2);
     if (!gate.allowed) {
       if (gate.reason === "queue_full") showToastMessage("Maksimal 2 percakapan dapat berjalan bersamaan. Tunggu salah satu selesai.");
       return;
     }
-    if (contextExhausted || (contextPolicy && roomContext(activeSession.messages, contextPolicy, query).exhausted)) {
+    if ((!roomOverride && contextExhausted) || (contextPolicy && roomContext(targetSession.messages, contextPolicy, query).exhausted)) {
       showToastMessage(contextExhausted ? "Konteks percakapan sudah penuh. Lanjutkan di chat baru." : "Pesan ini melebihi sisa konteks. Persingkat pesan atau buka chat baru.");return;
     }
     const wait=getChatWaitMs();if(wait>7000){showToastMessage(`Tunggu ${Math.ceil(wait/1000)} detik sebelum mengirim pesan lagi.`);return;}
 
-    if(homeView || !hasStartedConversation(activeSession)){
+    if(roomOverride || homeView || !hasStartedConversation(targetSession)){
       setHomeView(false);window.history.pushState(null,"",`/chat?room=${encodeURIComponent(targetSessionId)}`);
     }
     const effectiveTheme = themeOverride || currentTheme;
@@ -1013,9 +1016,8 @@ export default function TaxAssistantView() {
                       references: evt.references || [],
                       content: typeof evt.answer === "string" ? evt.answer : m.content,
                       durationMs: evt.duration_ms,
-                      suggestedTheme:
-                        (evt.suggested_theme as TaxThemeCode) ||
-                        m.suggestedTheme,
+                      suggestedTheme: evt.suggested_theme || undefined,
+                      suggestedThemes: suggestedTaxTargets(evt.suggested_themes || evt.suggested_theme, m.theme || effectiveTheme),
                       followUps: evt.follow_ups || [],
                     };
                   }
@@ -1084,28 +1086,33 @@ export default function TaxAssistantView() {
     setTimeout(() => sendPrompt(trimmed), 30);
   }
 
-  function switchAndRetryQuestion(
-    targetTheme: TaxThemeCode,
-    questionText?: string
-  ) {
-    if (isGenerating) return;
-    const q = questionText || "";
-    if (!q) {
-      switchTheme(targetTheme);
+  const taxChatLaunchAt = useRef(0);
+  function openTaxChat(targetTheme: TaxThemeCode, question: string) {
+    if (!question.trim() || Date.now() - taxChatLaunchAt.current < 1200) return;
+    if (sessionsRef.current.filter(isSessionGenerating).length >= 2) {
+      showToastMessage("Tunggu salah satu jawaban selesai sebelum membuka chat berikutnya.");
       return;
     }
-    setSessions((prev) =>
-      prev.map((s) =>
-        s.id === activeSessionId
-          ? {
-              ...s,
-              theme: targetTheme,
-              messages: s.messages.slice(0, Math.max(0, s.messages.length - 2)).map((m) => (m.theme ? m : { ...m, theme: s.theme })),
-            }
-          : s
-      )
-    );
-    setTimeout(() => sendPrompt(q, targetTheme), 40);
+    const wait = getChatWaitMs();
+    if (wait > 7000) {
+      showToastMessage(`Tunggu ${Math.ceil(wait / 1000)} detik sebelum mengirim pesan lagi.`);
+      return;
+    }
+    taxChatLaunchAt.current = Date.now();
+    const room: ChatSession = {
+      id: `draft-${crypto.randomUUID()}`, title: "Chat baru", theme: targetTheme,
+      updatedAt: Date.now(), messages: [], messagesLoaded: true,
+    };
+    const next = [room, ...sessionsRef.current.filter(hasStartedConversation)];
+    sessionsRef.current = next;
+    setSessions(next);
+    setActiveSessionId(room.id);
+    setHistoryView(false);setSavedView(false);setHomeView(false);
+    setSourceSelection(null);setEditingMsgId(null);setInput("");
+    setCommandDismissed(false);setCommandIndex(0);
+    closeSidebarOnMobile();
+    // Pass the room explicitly: React state still points to the previous room here.
+    void sendPrompt(question, targetTheme, room);
   }
 
   function regenerateLastResponse() {
@@ -1547,35 +1554,17 @@ export default function TaxAssistantView() {
 
                         {!m.isStreaming && !!m.references?.length && <button className="jst-sources-trigger" onClick={() => {closeSidebarOnMobile();setSourceSelection({messageId:m.id});}}><FileTextIcon size={15}/>Sumber · {new Set(m.references.map(reference => reference.document_name)).size} dokumen</button>}
 
-                        {!m.isStreaming &&
-                          m.suggestedTheme &&
-                          m.suggestedTheme !== currentTheme && (
-                            <div>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  switchAndRetryQuestion(
-                                    m.suggestedTheme!,
-                                    m.originalQuestion
-                                  )
-                                }
-                                className="cross-theme-btn"
-                              >
-                                <ThemeIcon
-                                  code={m.suggestedTheme}
-                                  color={
-                                    DKI_TAX_THEMES[m.suggestedTheme].iconColor
-                                  }
-                                />
-                                <span>
-                                  Pindah ke{" "}
-                                  {DKI_TAX_THEMES[m.suggestedTheme].shortLabel} &
-                                  Tanya Ulang
-                                </span>
-                                <ArrowRightIcon size={14} color="var(--text-muted)" aria-hidden="true" />
-                              </button>
-                            </div>
-                          )}
+                        {!m.isStreaming && !m.failed && idx === activeSession.messages.length - 1 && (() => {
+                          const question = m.originalQuestion || precedingQuestion(activeSession.messages, idx);
+                          return suggestedTaxTargets(m.suggestedThemes || m.suggestedTheme, m.theme || currentTheme).map(target => (
+                            <button type="button" key={target} className="cross-theme-btn"
+                              onClick={() => openTaxChat(target, question)}>
+                              <ThemeIcon code={target} color={DKI_TAX_THEMES[target].iconColor} />
+                              <span>Chat baru · {DKI_TAX_THEMES[target].shortLabel}</span>
+                              <ArrowRightIcon size={14} aria-hidden="true" />
+                            </button>
+                          ));
+                        })()}
 
                         {!m.isStreaming && m.content && (
                           <div
@@ -1629,7 +1618,6 @@ export default function TaxAssistantView() {
 
                         {!m.isStreaming && !m.failed &&
                           idx === activeSession.messages.length - 1 &&
-                          !m.suggestedTheme &&
                           m.followUps &&
                           m.followUps.length > 0 && (
                             <div

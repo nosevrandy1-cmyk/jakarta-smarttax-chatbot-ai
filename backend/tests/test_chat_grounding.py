@@ -40,7 +40,7 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
             return [json.loads(line) async for line in chat.stream_smarttax_chat(question,history or [])]
 
     async def test_substantive_questions_use_grounded_model(self):
-        for question in ["Apa informasi yang kamu punya?", "Tarif PBB berapa?", "Bagaimana BPHTB?"]:
+        for question in ["Apa informasi yang kamu punya?", "Tarif PBB berapa?", "Bagaimana pembayaran PBB?"]:
             events=await self.events(question)
             self.assertEqual(''.join(e.get("delta","") for e in events),"Jawaban model untuk pengujian.")
             self.assertEqual(events[-1]["response_source"],"ollama")
