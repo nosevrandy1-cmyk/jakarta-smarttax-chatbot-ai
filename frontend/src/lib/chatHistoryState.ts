@@ -14,7 +14,7 @@ export function historyTransport<T extends {
     activeSessionId: started.some(room => room.id === activeSessionId) ? activeSessionId : started[0]?.id || null,
     sessions: started.map(({messagesLoaded, messageCount: _count, preview: _preview, lastFailed: _failed, messages, ...room}) => ({
       ...room,
-      ...(messagesLoaded === false ? {} : {messages: messages.map(({isStreaming: _streaming, statusText: _status, theme: _theme, ...message}) => message)}),
+      ...(messagesLoaded === false ? {} : {messages: messages.filter(message => !message.isStreaming).map(({isStreaming: _streaming, statusText: _status, ...message}) => message)}),
     })),
   };
 }

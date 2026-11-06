@@ -1,3 +1,4 @@
+from fastapi.concurrency import run_in_threadpool
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -435,9 +436,9 @@ class SmartTaxEvaluationEngine:
         return snapshot
 
     async def get_dashboard_state(self) -> Dict[str, Any]:
-        history = self.load_history()
+        history = await run_in_threadpool(self.load_history)
         latest = history[-1] if history else None
-        telemetry = knowledge_store.get_collection_telemetry()
+        telemetry = await run_in_threadpool(knowledge_store.get_collection_telemetry)
 
         ollama_online = False
         installed_models: List[str] = []
@@ -455,12 +456,13 @@ class SmartTaxEvaluationEngine:
         return {
             "hardware": {
                 **HARDWARE_PROFILE,
+                "embedding_model": f"Hashing lokal ({embedder.dim} dimensi)",
                 "ollama_online": ollama_online,
                 "installed_models": installed_models,
             },
             "vector_store": telemetry,
             "latest_snapshot": latest,
-            "evaluation_readiness": self.evaluation_readiness(),
+            "evaluation_readiness": await run_in_threadpool(self.evaluation_readiness),
             "history_timeline": [
                 {
                     "snapshot_id": h["snapshot_id"],

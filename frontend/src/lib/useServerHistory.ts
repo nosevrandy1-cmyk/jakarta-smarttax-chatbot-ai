@@ -74,18 +74,16 @@ export function useServerHistory<T extends SessionShape>(initial: T[]) {
     return () => { disposed.current = true; controller.abort(); setHistoryFlusher(null); };
   }, [flush, user.id]);
 
+  // The transport excludes unfinished assistant messages. Token updates therefore
+  // do not restart the debounce for another room that has already completed.
+  const pendingSnapshot = JSON.stringify(historyTransport(sessions, activeSessionId));
   useEffect(() => {
     if (!hydrated) return;
-    latest.current = JSON.stringify(historyTransport(sessions, activeSessionId));
-    // Stream tokens stay in memory; save the completed/stopped response once.
-    if (sessions.some(session => session.messages.some(message => message.isStreaming))) {
-      setSyncStatus('Jawaban sedang dibuat; riwayat disimpan setelah selesai.');
-      return;
-    }
+    latest.current = pendingSnapshot;
     if (latest.current !== acknowledged.current) setSyncStatus('Perubahan belum tersimpan…');
     const timer = setTimeout(() => { void flush().catch(() => {}); }, 500);
     return () => clearTimeout(timer);
-  }, [sessions, activeSessionId, hydrated, flush]);
+  }, [pendingSnapshot, hydrated, flush]);
 
   const [roomLoadError, setRoomLoadError] = useState('');
   const [loadAttempt, setLoadAttempt] = useState(0);

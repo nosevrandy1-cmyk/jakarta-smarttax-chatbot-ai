@@ -115,3 +115,55 @@ class SourceReviewTests(unittest.TestCase):
                 self.assertEqual(response.status_code,200,response.text)
         try: asyncio.run(check())
         finally: auth.tearDown()
+
+
+class DocumentPrivacyTests(unittest.TestCase):
+    def setUp(self):
+        fixtures.EmptyDashboardTests.setUp(self)
+        self.store=fixtures.knowledge_store
+
+    def test_summary_and_detail_never_send_content_or_internal_metadata(self):
+        archive=self.store.archive
+        source=archive.stage(['SENSITIVE FIRST','SENSITIVE SECOND'],[
+            {'doc_name':'Selected document','domain':'PBB-P2','tema_pajak':'PBB-P2','page_number':1,'source_type':'pdf_regulasi','contributor':'PRIVATE ACTOR'},
+            {'doc_name':'Selected document','domain':'PBB-P2','tema_pajak':'PBB-P2','page_number':2,'source_type':'pdf_regulasi'}],b'original','test.md')
+        listing=archive.browse(query='Selected document',limit=1)
+        payload=json.dumps(listing)
+        for secret in ['SENSITIVE','PRIVATE ACTOR','stored_name','content_sha256','uploaded_by']:
+            self.assertNotIn(secret,payload)
+        detail=archive.browse_detail(source,limit=1)
+        self.assertEqual(detail['total'],2)
+        self.assertEqual(len(detail['chunks']),1)
+        self.assertNotIn('text',detail['chunks'][0])
+        chunk=archive.read_chunk(source,detail['chunks'][0]['id'])
+        self.assertEqual(chunk['text'],'SENSITIVE FIRST')
+        self.assertNotIn('SENSITIVE SECOND',json.dumps(chunk))
+        with self.assertRaises(KeyError):archive.read_chunk('another-document',chunk['id'])
+        next_page=archive.browse_detail(source,offset=1,limit=1)
+        self.assertEqual(next_page['chunks'][0]['page'],2)
+        with self.assertRaises(ValueError):archive.browse_detail(source,limit=100)
+        with self.assertRaises(ValueError):archive.browse(limit=100)
+
+    def test_document_endpoints_require_developer_including_chunk_content(self):
+        source=self.store.ingest_pdf(make_pdf('PRIVATE CONTENT'),'private.pdf')['source_id']
+        chunk=self.store.archive.browse_detail(source)['chunks'][0]['id']
+        auth=test_auth.GoogleAuthTests();auth.setUp()
+        install_source_routes(auth.app,self.store,embedder)
+        paths=['/api/rag/sources',f'/api/rag/sources/{source}',f'/api/rag/sources/{source}/chunks/{chunk}',f'/api/rag/sources/{source}/file']
+        async def check():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=auth.app),base_url='http://localhost:8000') as client:
+                for path in paths:self.assertEqual((await client.get(path)).status_code,401)
+                token=auth.seed_session(auth.claims);client.cookies.set(auth.settings.session_cookie,token)
+                for path in paths:self.assertEqual((await client.get(path)).status_code,403)
+                token=auth.seed_session({**auth.claims,'sub':'developer','email':'developer@example.test','hd':'example.test'})
+                client.cookies.set(auth.settings.session_cookie,token)
+                detail=await client.get(paths[1]);self.assertEqual(detail.status_code,200)
+                self.assertNotIn('PRIVATE CONTENT',detail.text)
+                self.assertIn('no-store',detail.headers.get('cache-control',''))
+                content=await client.get(paths[2]);self.assertEqual(content.status_code,200)
+                self.assertIn('PRIVATE CONTENT',content.text)
+                self.assertEqual((await client.get('/api/rag/sources?limit=999')).status_code,422)
+                self.assertEqual((await client.get('/api/rag/sources?offset=-1')).status_code,422)
+                self.assertEqual((await client.get('/api/rag/sources/not-a-document/chunks/'+chunk)).status_code,404)
+        try:asyncio.run(check())
+        finally:auth.tearDown()

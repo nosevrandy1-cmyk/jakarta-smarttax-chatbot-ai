@@ -99,6 +99,7 @@ class GoogleAuthTests(unittest.TestCase):
         async def check(client):
             client.cookies.set(SESSION_COOKIE,token)
             self.assertEqual((await client.get('/api/rag/telemetry',headers={'X-Role':'developer'})).status_code,403)
+            self.assertEqual((await client.get('/api/rag/import-status')).status_code,403)
             self.assertEqual((await client.post('/api/rag/ingest-pdf')).status_code,403)
             self.assertEqual((await client.post('/api/eval/run')).status_code,403)
             self.assertEqual((await client.get('/openapi.json')).status_code,403)

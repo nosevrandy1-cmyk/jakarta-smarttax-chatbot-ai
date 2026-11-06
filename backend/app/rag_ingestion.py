@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 import hashlib
 import io
@@ -20,7 +21,8 @@ from .config import (
     UPLOAD_STAGING_DIR,
 )
 from .embedder import embedder
-from .source_review import SourceArchive
+from .source_review import SourceArchive, text_query_scope
+from .retrieval_text import passage_score, document_matches, legal_queries, normalize_legal_query, normalized_terms
 from .tax_db import TAX_THEMES
 
 
@@ -336,6 +338,17 @@ class SmartTaxKnowledgeStore:
         tema_pajak: Optional[str] = None,
         source_type: Optional[str] = None,
     ) -> List[RetrievalResult]:
+        query = normalize_legal_query(query)
+        comparisons = legal_queries(query)
+        if comparisons:
+            groups = [self.query_knowledge(part, max(1, top_k // len(comparisons)), domain, tema_pajak, source_type)
+                      for part in comparisons]
+            merged, seen = [], set()
+            for index in range(max((len(group) for group in groups), default=0)):
+                for group in groups:
+                    if index < len(group) and group[index].chunk_id not in seen:
+                        merged.append(group[index]); seen.add(group[index].chunk_id)
+            return merged[:top_k + 10]
         total = self.collection.count()
         if total == 0:
             return []
@@ -359,7 +372,7 @@ class SmartTaxKnowledgeStore:
             where_filter = {"$and": where_clauses}
 
         res = self.collection.query(
-            query_embeddings=[q_vec], n_results=min(top_k, total), where=where_filter,
+            query_embeddings=[q_vec], n_results=min(max(top_k * 4, 24), total), where=where_filter,
             include=["documents", "metadatas", "distances"],
         )
 
@@ -370,30 +383,53 @@ class SmartTaxKnowledgeStore:
 
         tax_code = domain.upper() if domain and domain.upper() in TAX_DOMAINS else tema_pajak.upper() if tema_pajak and tema_pajak.upper() in TAX_THEMES else None
         tax_code = 'PBB-P2' if tax_code == 'JPB' else tax_code
-        valid = self.archive.validated_records(ids_list, tax_code)
+        lexical_ids = self.archive.search_text(query, tax_code, source_type, limit=24)
+        scores = {}
+        for weight, ranked in [(1.0, ids_list), (1.5, lexical_ids)]:
+            for rank, cid in enumerate(ranked, 1):
+                scores[cid] = scores.get(cid, 0.0) + weight / (60 + rank)
+        ranked_ids = sorted(scores, key=lambda cid: scores[cid], reverse=True)
+        if any(text_query_scope(query).values()):
+            ranked_ids = [cid for cid in ranked_ids if cid in lexical_ids]
+        valid = self.archive.validated_records(ranked_ids, tax_code)
+        ranked_ids = [cid for cid in ranked_ids if cid in valid and document_matches(query, valid[cid]['metadata'].get('doc_name', '')) and passage_score(query, valid[cid]['text'], valid[cid]['metadata'].get('doc_name', '')) >= 0]
+        ranked_ids.sort(key=lambda cid: (passage_score(query, valid[cid]['text'], valid[cid]['metadata'].get('doc_name', '')), scores[cid]), reverse=True)
+        distances = dict(zip(ids_list, dists_list))
         results: List[RetrievalResult] = []
-        for cid, doc_text, meta, dist in zip(ids_list, docs_list, metas_list, dists_list):
-            if str(cid) not in valid:
-                continue
-            doc_text = valid[str(cid)]['text']
-            meta_dict = valid[str(cid)]['metadata']
-            cosine_dist = float(dist) if dist is not None else 0.5
-            sim = max(0.0, min(1.0, 1.0 - cosine_dist))
-            results.append(
-                RetrievalResult(
-                    chunk_id=str(cid),
-                    text=str(doc_text or ""),
-                    similarity=round(sim, 4),
-                    cosine_distance=round(cosine_dist, 4),
-                    source_type=str(meta_dict.get("source_type", "pdf_regulasi")),
-                    doc_name=str(meta_dict.get("doc_name", "Korpus Lokal DKI")),
-                    domain=str(meta_dict.get("domain", meta_dict.get("tema_pajak", "PBB-P2"))),
-                    contributor=str(meta_dict.get("contributor", "Bapenda DKI")),
-                    ingested_at=str(meta_dict.get("ingested_at", "")),
-                    metadata=meta_dict,
-                )
-            )
-        return results
+        def result_for(cid, row, method):
+            meta_dict = {**row['metadata'], 'retrieval_method': method}
+            header = self.archive.page_context(cid)
+            if header:meta_dict['page_context'] = header
+            dist = float(distances.get(cid, 1.0))
+            return RetrievalResult(chunk_id=str(cid),text=row['text'],similarity=round(max(0.0,min(1.0,1.0-dist)),4),
+                cosine_distance=round(dist,4),source_type=str(meta_dict.get('source_type','pdf_regulasi')),
+                doc_name=str(meta_dict.get('doc_name','Dokumen')),domain=str(meta_dict.get('domain','PBB-P2')),
+                contributor=str(meta_dict.get('contributor','')),ingested_at=str(meta_dict.get('ingested_at','')),metadata=meta_dict)
+        concepts = normalized_terms(query)
+        focused_benefit = 'pembebasan' in concepts and bool({'100', 'penuh'} & concepts)
+        seed_limit = min(top_k, 2) if focused_benefit else top_k
+        seeds=[]
+        for cid in ranked_ids:
+            if cid in valid:
+                seeds.append(result_for(cid,valid[cid],'hybrid' if cid in lexical_ids else 'vector'))
+            if len(seeds)>=seed_limit:break
+        seen=set()
+        for hit in seeds:
+            if hit.chunk_id in seen:continue
+            results.append(hit);seen.add(hit.chunk_id)
+            if len(results) <= 2:
+                for cid, row in self.archive.legal_context(hit.chunk_id, tax_code).items():
+                    if cid not in seen and len(results) < top_k + 10:
+                        results.append(result_for(cid, row, 'article_context')); seen.add(cid)
+            # A colon at the boundary signals an introduction whose list may be on the next page.
+            if hit.text.rstrip().endswith((':','：')) and len(results)<top_k+2:
+                for cid,row in self.archive.following_chunks(hit.chunk_id,tax_code).items():
+                    if cid in seen:continue
+                    body='\n'.join(line for line in row['text'].splitlines() if not line.startswith(('[SUMBER','##'))).strip()
+                    if len(body)<25:continue
+                    results.append(result_for(cid,row,'continuation'));seen.add(cid)
+                    break
+        return results[:top_k+10]
 
     @staticmethod
     def _document_key(chunk_id: str, metadata: Dict[str, Any]) -> str:
@@ -437,8 +473,17 @@ class SmartTaxKnowledgeStore:
 
 
     def get_collection_telemetry(self) -> Dict[str, Any]:
-        all_items = self.active_records(["metadatas"])
-        metas = all_items.get("metadatas") or []
+        # Dashboard counts come from the active catalog, never a full vector scroll.
+        with self.archive.connect() as db:
+            rows = db.execute("""SELECT a.metadata_json, count(c.id) AS chunks
+                FROM document_versions v JOIN documents d ON d.id=v.document_id
+                JOIN archive_attributes a ON a.version_id=v.id
+                JOIN document_chunks c ON c.version_id=v.id AND c.state='ready'
+                WHERE v.state='active' AND d.lifecycle='published'
+                AND d.deleted_at IS NULL AND v.deleted_at IS NULL
+                AND d.access_scope IN ('public','authenticated')
+                GROUP BY v.id""").fetchall()
+        metas = [(json.loads(row['metadata_json']), row['chunks']) for row in rows]
 
         by_source_type: Dict[str, int] = {
             "pdf_regulasi": 0,
@@ -452,15 +497,15 @@ class SmartTaxKnowledgeStore:
         recent_sources: List[Dict[str, Any]] = []
         seen_docs = set()
 
-        for m in metas:
+        for m, chunk_count in metas:
             if not m:
                 continue
             st = str(m.get("source_type", "pdf_regulasi"))
             dom = normalize_domain(str(m.get("domain") or m.get("tema_pajak") or "PBB-P2"))
             if st in by_source_type:
-                by_source_type[st] += 1
+                by_source_type[st] += chunk_count
             if dom in domain_matrix and st in domain_matrix[dom]:
-                domain_matrix[dom][st] += 1
+                domain_matrix[dom][st] += chunk_count
 
             doc_key = f"{st}:{m.get('doc_name', '')}:{dom}"
             if doc_key not in seen_docs:
@@ -497,8 +542,8 @@ class SmartTaxKnowledgeStore:
             "engine": "qdrant",
             "mode": self.mode,
             "distance_metric": "cosine",
-            "total_chunks": len(metas),
-            "total_documents": len({self._document_key(cid, meta or {}) for cid, meta in zip(all_items.get("ids") or [], metas)}),
+            "total_chunks": sum(count for _, count in metas),
+            "total_documents": len(metas),
             "by_source_type": by_source_type,
             "domain_matrix": domain_matrix,
             "covered_slots": covered_slots,

@@ -26,7 +26,7 @@ test('empty drafts never enter persisted history or become its active ID', () =>
 });
 
 test('first sent message promotes a draft; transient stream fields are omitted', () => {
-  const result=historyTransport([{id:'draft',messages:[{role:'user',content:'Hello',isStreaming:true,statusText:'Working'}],saved:true,pinned:true}],'draft');
+  const result=historyTransport([{id:'draft',messages:[{role:'user',content:'Hello',statusText:'Working'}],saved:true,pinned:true}],'draft');
   assert.equal(result.activeSessionId,'draft');
   assert.deepEqual(plain(result.sessions[0]),{id:'draft',saved:true,pinned:true,messages:[{role:'user',content:'Hello'}]});
 });
@@ -81,4 +81,19 @@ test('per-session generation isolates streaming state to the active room and all
     reason: 'queue_full',
     queued: false,
   });
+});
+
+
+test('completed rooms save while another streams; partial assistant text never persists', () => {
+  const rooms = [
+    {id:'a',messages:[{id:'u1',role:'user',content:'A'},{id:'a1',role:'assistant',content:'Done',theme:'PAT'}]},
+    {id:'b',messages:[{id:'u2',role:'user',content:'B'},{id:'a2',role:'assistant',content:'Partial',isStreaming:true}]},
+  ];
+  const first=plain(historyTransport(rooms,'b'));
+  assert.equal(first.sessions[0].messages[1].theme,'PAT');
+  assert.equal(first.sessions[1].messages.length,1);
+  rooms[1].messages[1].content+=' more tokens';
+  assert.deepEqual(plain(historyTransport(rooms,'b')),first);
+  rooms[1].messages[1].isStreaming=false;
+  assert.equal(historyTransport(rooms,'b').sessions[1].messages.length,2);
 });
