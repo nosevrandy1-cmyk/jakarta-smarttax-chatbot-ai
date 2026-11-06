@@ -29,6 +29,7 @@ class EmptyDashboardTests(unittest.TestCase):
         identifiers = knowledge_store.collection.get()["ids"]
         if identifiers:
             knowledge_store.collection.delete(ids=identifiers)
+        knowledge_store.archive.clear()
         knowledge_store.last_ingested_source = None
         self.directory = TEST_ROOT / self._testMethodName
         self.directory.mkdir()

@@ -27,7 +27,9 @@ class ChunkDetailTests(unittest.TestCase):
         self.assertEqual(result['total_chunks'],3)
         self.assertEqual(sorted(d['chunk_count'] for d in result['documents']),[1,2])
         self.assertEqual(len(result['items']),1)
-        self.assertEqual(knowledge_store.get_collection_telemetry()['total_documents'],2)
+        from unittest.mock import patch
+        with patch.object(knowledge_store.collection, 'get', side_effect=AssertionError('Dashboard must not scan vectors')):
+            self.assertEqual(knowledge_store.get_collection_telemetry()['total_documents'],2)
         search=knowledge_store.get_chunk_details(query='GOOGLE')
         self.assertEqual(search['matched_chunks'],1)
         self.assertIsNone(search['items'][0]['page'])

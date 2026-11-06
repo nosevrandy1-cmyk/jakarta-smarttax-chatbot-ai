@@ -4,6 +4,7 @@ from contextlib import closing
 import hashlib
 import json
 import mimetypes
+import re
 from pathlib import Path
 import sqlite3
 import threading
@@ -11,10 +12,22 @@ import time
 import uuid
 
 from .db_core import backup, connect, initialize
+from .retrieval_text import document_matches, passage_score, passage_body, document_title_pattern, lexical_expansions, legal_queries
 
 STATUS = {'pending':'staged','approved':'active','rejected':'rejected','failed':'failed'}
 API_STATUS = {v:k for k,v in STATUS.items()}
 TAX_CODES = {'PBB-P2','PBJT','BPHTB','REKLAME','PAT'}
+
+
+def text_query_scope(query):
+    text=query.casefold()
+    years=re.findall(r'\btahun\s+(\d{4})\b',text)
+    codes=re.findall(r'\bkode\s+(\d{3})\b',text)
+    street=re.search(r'\b(?:jalan|jl\.?)\s+(.+?)(?=\s+(?:tahun|kode|kelas|berapa|yang|termasuk)\b|[?!.]|$)',text)
+    classes=re.findall(r'\bkelas\s+([a-z]{1,3})(?:\s+dan\s+([a-z]{1,3}))?\b',text)
+    return {'year':years[-1] if years else None,'code':codes[-1] if codes else None,
+        'street':street[1].strip()[:80] if street else None,
+        'classes':[c for c in classes[-1] if c] if classes else []}
 
 
 class SourceArchive:
@@ -25,6 +38,118 @@ class SourceArchive:
         self.lock = threading.RLock()
         initialize(self.path, 'knowledge')
         self._migrate()
+        self._ensure_text_search()
+
+    def _ensure_text_search(self):
+        """Add a local text index without changing existing document IDs or vectors."""
+        with self.connect() as db:
+            exists = db.execute("SELECT 1 FROM sqlite_master WHERE name='document_chunks_fts'").fetchone()
+            db.executescript("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts USING fts5(text, content='document_chunks', content_rowid='rowid', tokenize='unicode61');
+                CREATE TRIGGER IF NOT EXISTS document_chunks_search_insert AFTER INSERT ON document_chunks BEGIN
+                    INSERT INTO document_chunks_fts(rowid,text) VALUES(new.rowid,new.text); END;
+                CREATE TRIGGER IF NOT EXISTS document_chunks_search_delete AFTER DELETE ON document_chunks BEGIN
+                    INSERT INTO document_chunks_fts(document_chunks_fts,rowid,text) VALUES('delete',old.rowid,old.text); END;
+                CREATE TRIGGER IF NOT EXISTS document_chunks_search_update AFTER UPDATE OF text ON document_chunks BEGIN
+                    INSERT INTO document_chunks_fts(document_chunks_fts,rowid,text) VALUES('delete',old.rowid,old.text);
+                    INSERT INTO document_chunks_fts(rowid,text) VALUES(new.rowid,new.text); END;
+            """)
+            if not exists:
+                db.execute("INSERT INTO document_chunks_fts(document_chunks_fts) VALUES('rebuild')")
+
+    def search_text(self, query, tax_code=None, source_type=None, limit=24):
+        import re
+        ignored = {'apa','yang','di','dan','atau','untuk','dari','dalam','ada','saja','aja','sebutkan','jelaskan','tolong','bagaimana','tentang','berapa','saya','aku','minta'}
+        terms = list(dict.fromkeys(t for t in re.findall(r'[^\W_]+', query.casefold()) if len(t)>1 and t not in ignored))[:24]
+        if not terms:
+            return []
+        expression = '(' + ' OR '.join('"'+term+'"' for term in terms) + ')'
+        # Expand lexical vocabulary only; no model call or factual answer is injected.
+        additions = lexical_expansions(query)
+        if additions:
+            expression = '(' + expression + ' OR ' + ' OR '.join(chr(34)+term+chr(34) for term in additions) + ')'
+        scope=text_query_scope(query)
+        for key in ('code','street'):
+            if scope[key]:expression += ' AND "'+scope[key].replace('"','')+'"'
+        if scope['classes']:
+            expression += ' AND ('+' OR '.join('"'+c+'"' for c in scope['classes'])+')'
+        with self.connect() as db:
+            rows = db.execute("""SELECT c.id,c.text,d.title FROM document_chunks_fts
+                JOIN document_chunks c ON c.rowid=document_chunks_fts.rowid
+                JOIN document_versions v ON v.id=c.version_id JOIN documents d ON d.id=v.document_id
+                JOIN archive_attributes a ON a.version_id=v.id
+                WHERE document_chunks_fts MATCH ? AND c.state='ready' AND v.state='active'
+                AND d.lifecycle='published' AND d.deleted_at IS NULL AND v.deleted_at IS NULL
+                AND d.access_scope IN ('public','authenticated')
+                AND (? IS NULL OR EXISTS(SELECT 1 FROM chunk_tax_categories t WHERE t.chunk_id=c.id AND t.tax_code=?))
+                AND (? IS NULL OR json_extract(a.metadata_json,'$.source_type')=?)
+                AND (? IS NULL OR instr(d.title,?)>0)
+                AND (? IS NULL OR lower(d.title) LIKE ?)
+                ORDER BY bm25(document_chunks_fts),c.id LIMIT ?""",
+                (expression,tax_code,tax_code,source_type,source_type,scope['year'],scope['year'],document_title_pattern(query),document_title_pattern(query),240)).fetchall()
+        ranked = [(passage_score(query, row['text'], row['title']), index, row['id'])
+                  for index, row in enumerate(rows) if document_matches(query, row['title'])]
+        ranked = [row for row in ranked if row[0] >= 0]
+        ranked.sort(key=lambda row: (-row[0], row[1]))
+        return [row[2] for row in ranked[:max(1, min(limit, 40))]]
+
+    def page_context(self, chunk_id):
+        """Recover column labels and location headings from the same physical page."""
+        with self.connect() as db:
+            row=db.execute("""SELECT first.text FROM document_chunks seed
+                JOIN document_chunks first ON first.version_id=seed.version_id
+                AND first.physical_page_start=seed.physical_page_start
+                WHERE seed.id=? ORDER BY first.sequence_no LIMIT 1""",(chunk_id,)).fetchone()
+        if not row:return ''
+        text=row['text']
+        if not all(word in text.casefold() for word in ('penggolongan','nilai jual')):return ''
+        header=re.split(r'(?m)^\d{3}\s+(?:JL|GG|KP)\b',text,maxsplit=1)[0]
+        return header[:1200]
+
+    def legal_context(self, chunk_id, tax_code=None):
+        """Expand one article and its explicit cross-references within the same version.
+
+        All IDs are revalidated against active state, tax scope and access controls.
+        One hop, 12 chunks and 9000 characters bound the work and context size.
+        """
+        with self.connect() as db:
+            seed = db.execute('SELECT version_id,text,locator_json FROM document_chunks WHERE id=?', (chunk_id,)).fetchone()
+            if not seed:
+                return {}
+            section = json.loads(seed['locator_json']).get('section', '')
+            match = re.fullmatch(r'#{0,6}\s*Pasal\s+(\d+[A-Za-z]?)\s*', section, re.I)
+            if not match:
+                match = re.search(r'(?m)^#{1,6}\s+Pasal\s+(\d+[A-Za-z]?)\s*$', seed['text'], re.I)
+            if not match:
+                return {}
+            article = match[1].casefold()
+            candidates = db.execute('SELECT id,text,locator_json FROM document_chunks WHERE version_id=? ORDER BY sequence_no LIMIT 1200', (seed['version_id'],)).fetchall()
+        def article_of(row):
+            section = json.loads(row['locator_json']).get('section', '')
+            m = re.fullmatch(r'#{0,6}\s*Pasal\s+(\d+[A-Za-z]?)\s*', section, re.I)
+            if not m:
+                m = re.search(r'(?m)^#{1,6}\s+Pasal\s+(\d+[A-Za-z]?)\s*$', row['text'], re.I)
+            return m[1].casefold() if m else None
+        own = [row for row in candidates if article_of(row) == article]
+        cited = set(re.findall(r'\bPasal\s+(\d+[A-Za-z]?)', '\n'.join(row['text'] for row in own), re.I))
+        cited = {item.casefold() for item in cited} - {article}
+        related = [row for row in candidates if article_of(row) in cited]
+        ids, size = [], 0
+        for row in own + related:
+            if row['id'] == chunk_id or not re.search(r'[^\W\d_]{2,}', passage_body(row['text'])):
+                continue
+            if len(ids) >= 12 or size + len(row['text']) > 9000:
+                break
+            ids.append(row['id']); size += len(row['text'])
+        return self.validated_records(ids, tax_code)
+
+    def following_chunks(self, chunk_id, tax_code=None):
+        with self.connect() as db:
+            seed=db.execute('SELECT version_id,sequence_no FROM document_chunks WHERE id=?',(chunk_id,)).fetchone()
+            if not seed:return {}
+            ids=[row[0] for row in db.execute('SELECT id FROM document_chunks WHERE version_id=? AND sequence_no>? AND sequence_no<=? ORDER BY sequence_no',
+                (seed['version_id'],seed['sequence_no'],seed['sequence_no']+2))]
+        return self.validated_records(ids,tax_code)
 
     def connect(self):
         return connect(self.path)
@@ -136,6 +261,47 @@ class SourceArchive:
                 JOIN documents d ON d.id=v.document_id WHERE d.deleted_at IS NULL AND v.deleted_at IS NULL ORDER BY a.rowid DESC''').fetchall()
         return [{**{k:v for k,v in json.loads(r['metadata_json']).items() if k!='stored_name'},
                  'status':API_STATUS.get(r['state'],'pending'),'reviewed_at':r['reviewed_at'],'note':r['note']} for r in rows]
+
+    @staticmethod
+    def _summary(row):
+        meta = json.loads(row['metadata_json'])
+        allowed = ('doc_name','domain','source_type','source_format','chunk_count','page_count','has_file','ingested_at')
+        return {**{key:meta[key] for key in allowed if key in meta},
+                'id':row['version_id'],'status':API_STATUS.get(row['state'],'pending')}
+
+    def browse(self, offset=0, limit=20, query='', domain=''):
+        if offset < 0 or not 1 <= limit <= 50 or len(query)>120:
+            raise ValueError('Batas pencarian tidak valid.')
+        where = "d.deleted_at IS NULL AND v.deleted_at IS NULL"
+        params=[]
+        if query:
+            where += " AND instr(lower(d.title),lower(?))>0"
+            params.append(query)
+        if domain:
+            where += " AND EXISTS(SELECT 1 FROM version_tax_categories t WHERE t.version_id=v.id AND t.tax_code=?)"
+            params.append(domain)
+        join = " FROM archive_attributes a JOIN document_versions v ON v.id=a.version_id JOIN documents d ON d.id=v.document_id WHERE " + where
+        with self.connect() as db:
+            total=db.execute('SELECT count(*)'+join,params).fetchone()[0]
+            rows=db.execute('SELECT a.version_id,a.metadata_json,v.state'+join+' ORDER BY a.rowid DESC LIMIT ? OFFSET ?',[*params,limit,offset]).fetchall()
+        return {'items':[self._summary(row) for row in rows],'total':total,'offset':offset,'limit':limit}
+
+    def browse_detail(self, source_id, offset=0, limit=10):
+        if offset < 0 or not 1 <= limit <= 20:
+            raise ValueError('Batas halaman tidak valid.')
+        with self.connect() as db:
+            row=db.execute('SELECT a.version_id,a.metadata_json,v.state FROM archive_attributes a JOIN document_versions v ON v.id=a.version_id JOIN documents d ON d.id=v.document_id WHERE v.id=? AND d.deleted_at IS NULL AND v.deleted_at IS NULL',(source_id,)).fetchone()
+            if row is None:raise KeyError(source_id)
+            rows=db.execute('SELECT id,sequence_no,physical_page_start,sheet_name,row_start FROM document_chunks WHERE version_id=? AND state!=? ORDER BY sequence_no LIMIT ? OFFSET ?',(source_id,'deleted',limit,offset)).fetchall()
+            total=db.execute("SELECT count(*) FROM document_chunks WHERE version_id=? AND state!='deleted'",(source_id,)).fetchone()[0]
+        return {**self._summary(row),'chunks':[{'id':r['id'],'number':r['sequence_no'],'page':r['physical_page_start'],'sheet':r['sheet_name'],'row':r['row_start']} for r in rows],
+                'total':total,'offset':offset,'limit':limit}
+
+    def read_chunk(self, source_id, chunk_id):
+        with self.connect() as db:
+            row=db.execute("SELECT c.text FROM document_chunks c JOIN document_versions v ON v.id=c.version_id JOIN documents d ON d.id=v.document_id WHERE c.version_id=? AND c.id=? AND c.state!='deleted' AND v.deleted_at IS NULL AND d.deleted_at IS NULL",(source_id,chunk_id)).fetchone()
+        if row is None:raise KeyError(chunk_id)
+        return {'id':chunk_id,'text':row['text']}
 
     def detail(self, source_id):
         row = self.get(source_id)

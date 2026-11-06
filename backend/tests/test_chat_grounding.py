@@ -74,9 +74,11 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(events[0]["type"],"status")
             self.assertEqual(events[-1]["response_source"],"ollama")
 
-    async def test_legacy_assistant_claims_are_not_reused_as_context(self):
+    async def test_legacy_assistant_claims_are_labeled_as_history_not_evidence(self):
         await self.events("Apa datanya?",[{"role":"assistant","content":"Hunian Puri Indah NJOP 5,8 miliar"}])
-        self.assertNotIn("Puri Indah",json.dumps(Model.request))
+        material=json.loads(Model.request['messages'][-1]['content'].split('\n',1)[1].split('\n\nPERTANYAAN TERBARU',1)[0])
+        self.assertIn('Puri Indah',str(material['riwayat_room_ini_bukan_sumber_fakta']))
+        self.assertEqual(material['kutipan_tersedia'],[])
 
     async def test_prd_is_passed_as_document_not_replaced_with_tax_data(self):
         self.store.get_collection_telemetry=lambda:{"total_chunks":1,"recent_sources":[
@@ -99,7 +101,8 @@ class ChatGroundingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m["role"] for m in messages], ["system", "user"])
         self.assertTrue(messages[-1]["content"].endswith("Berapa hasil simulasi Gedung Latihan Biru?"))
         self.assertIn("pertanyaan_lama_sudah_selesai", messages[-1]["content"])
-        self.assertNotIn("Jawaban lama yang bukan bukti", str(messages))
+        self.assertIn("Jawaban lama yang bukan bukti", messages[-1]['content'])
+        self.assertIn('Riwayat bukan bukti fakta',messages[0]['content'])
 
     async def test_sequential_requests_keep_current_question_last(self):
         history=[]

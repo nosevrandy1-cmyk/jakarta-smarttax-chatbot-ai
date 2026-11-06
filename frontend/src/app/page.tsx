@@ -877,8 +877,7 @@ export default function TaxAssistantView() {
 
     const historyForApi = targetSession.messages
       .filter((m) => m.content.trim() && !m.isStreaming && !m.failed)
-      .slice(-6)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({ id: m.id, role: m.role, content: m.content }));
 
     setSessions((prev) =>
       prev.map((s) => {

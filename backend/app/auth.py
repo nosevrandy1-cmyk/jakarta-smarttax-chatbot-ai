@@ -320,7 +320,7 @@ class LimitedBodyMiddleware:
     async def __call__(self, scope, receive, send):
         if scope['type'] != 'http' or not scope.get('path','').startswith('/api/') or scope['method'] in {'GET','HEAD','OPTIONS'}:
             return await self.app(scope,receive,send)
-        upload = scope['path'] in {'/api/rag/ingest-pdf','/api/rag/ingest-excel'}
+        upload = scope['path'] in {'/api/rag/ingest-pdf','/api/rag/ingest-excel','/api/rag/ingest-markdown'}
         limit = 21*1024*1024 if upload else 1024*1024
         headers = dict(scope.get('headers',[]))
         try:
